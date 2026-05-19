@@ -1,6 +1,4 @@
 """Benchmark: target 2k embeddings/s on a 4-core dev box (single replica)."""
-import time
-
 import pytest
 
 

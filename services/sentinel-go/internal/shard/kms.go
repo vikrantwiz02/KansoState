@@ -126,19 +126,3 @@ func aesGCMEncrypt(key, plaintext []byte) ([]byte, error) {
 	return gcm.Seal(nonce, nonce, plaintext, nil), nil
 }
 
-// aesGCMDecrypt decrypts ciphertext produced by aesGCMEncrypt.
-func aesGCMDecrypt(key, ciphertext []byte) ([]byte, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-	if len(ciphertext) < gcm.NonceSize() {
-		return nil, fmt.Errorf("redaction map: ciphertext too short")
-	}
-	nonce, ct := ciphertext[:gcm.NonceSize()], ciphertext[gcm.NonceSize():]
-	return gcm.Open(nil, nonce, ct, nil)
-}

@@ -4,7 +4,7 @@ import structlog
 import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from semantic.api.routes_classify_culture import router as culture_router
 from semantic.api.routes_embed import router as embed_router

@@ -8,8 +8,6 @@ import (
 const (
 	// emaAlpha is the smoothing factor for the exponentially-weighted moving average.
 	emaAlpha = float32(0.2)
-	// minDim is the minimum vector dimension accepted.
-	minDim = 1
 )
 
 // Engine computes meeting-level consensus from per-speaker embedding vectors.

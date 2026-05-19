@@ -10,7 +10,9 @@ _FEW_SHOT_EXAMPLES = [
     {
         "window": ["Let's align on this offline", "I'll loop in the relevant stakeholders"],
         "tags": ["indirect", "high-context"],
-        "bridge_note": "Speakers use indirect language; direct action items may need explicit follow-up.",
+        "bridge_note": (
+            "Speakers use indirect language; direct action items may need explicit follow-up."
+        ),
     },
     {
         "window": ["Ship it now", "Block this, it's broken", "LGTM, merge"],
@@ -47,8 +49,9 @@ class CultureClassifier:
             if now - ts < 30:
                 return tags, note
 
-        from langchain_core.messages import HumanMessage, SystemMessage
         import json
+
+        from langchain_core.messages import HumanMessage, SystemMessage
 
         messages = [SystemMessage(content=_SYSTEM_PROMPT)]
         for ex in _FEW_SHOT_EXAMPLES:
@@ -57,7 +60,9 @@ class CultureClassifier:
             )
             messages.append(
                 HumanMessage(
-                    content=f"Response: {json.dumps({'tags': ex['tags'], 'bridge_note': ex['bridge_note']})}"
+                    content="Response: {}".format(
+                        json.dumps({"tags": ex["tags"], "bridge_note": ex["bridge_note"]})
+                    )
                 )
             )
 

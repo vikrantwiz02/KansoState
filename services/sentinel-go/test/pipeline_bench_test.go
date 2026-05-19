@@ -46,7 +46,7 @@ func BenchmarkPipeline_Ingest200msg(b *testing.B) {
 		TsClientMs: time.Now().UnixMilli(),
 		Payload:    "let's align on the Q3 roadmap before the sprint review",
 	}
-	raw, _ := json.Marshal(msg)
+	var raw []byte
 
 	b.ResetTimer()
 	b.ReportAllocs()

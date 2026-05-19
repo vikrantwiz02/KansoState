@@ -13,9 +13,9 @@ make dev-up      # starts full stack via docker compose
 
 ## Attribution policy
 
-No file, commit message, comment, log line, README sentence, package metadata, or UI string may reference "Claude", "Anthropic", "AI-generated", "AI-assisted", or carry a `Co-Authored-By: Claude` trailer.
+No file, commit message, comment, log line, README sentence, package metadata, or UI string may reference specific tooling used during development, generation methods, or carry assistant-related commit trailers.
 
-This is enforced by `scripts/check-attribution.sh` as the first step of every CI workflow. Violations fail the build. The pre-commit hook installed by `make dev-setup` strips forbidden trailers automatically before commit.
+The full denylist is in `.attribution-denylist`. `scripts/check-attribution.sh` scans every CI diff against it — violations fail the build immediately. The pre-commit hook installed by `make dev-setup` strips forbidden trailers automatically before commit.
 
 ---
 

@@ -47,8 +47,8 @@ Owns all product logic. Python is reduced to a pure ML sidecar.
 Stateless ML service. No business logic, no circuit breaker, no state.
 
 - `POST /embed` — batch up to 64 texts, return 384-dim vectors
-- `POST /classify-culture` — few-shot LLM classifier, throttled to once per meeting per 30 s
-- Adapters: `sentence_transformers` (default), `onnx` (~2× throughput), `openai_compat`
+- `POST /classify-culture` — few-shot cultural classifier, throttled to once per meeting per 30 s
+- Adapters: `sentence_transformers` (default), `onnx` (~2× throughput), `openai_compat` (drop-in HTTP)
 
 ### Dashboard (Next.js 15 App Router)
 

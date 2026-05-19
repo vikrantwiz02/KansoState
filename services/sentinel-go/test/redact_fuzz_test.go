@@ -29,11 +29,8 @@ func FuzzRedactorRoundtrip(f *testing.F) {
 		if err != nil {
 			t.Fatalf("redact error: %v", err)
 		}
-		// Invariant 1: redacted text never contains an unmasked placeholder-eligible email.
-		if strings.Contains(out.RedactedText, "@") {
-			// There may be an @ that was NOT in a full email pattern — allowed.
-			// Just verify that each Token placeholder actually appears in output.
-		}
+		// Invariant 1: an @ sign in the output is acceptable only if it is not part of
+		// a fully-formed email pattern — the redactor normalises, not removes, partial tokens.
 		// Invariant 2: every token's placeholder appears in the redacted text.
 		for _, tok := range out.Redactions {
 			if !strings.Contains(out.RedactedText, tok.Placeholder) {

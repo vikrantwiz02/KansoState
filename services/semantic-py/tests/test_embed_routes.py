@@ -8,8 +8,8 @@ from fastapi.testclient import TestClient
 from hypothesis import given, settings as hy_settings
 from hypothesis import strategies as st
 
-from semantic.main import app
 from semantic.api import deps
+from semantic.main import app
 
 
 @pytest.fixture()

@@ -68,9 +68,9 @@ func WSHandler(ingest ingestor, allowedOrigins []string, log *zap.Logger) gin.Ha
 		metrics.ActiveConnections.Inc()
 		defer metrics.ActiveConnections.Dec()
 
-		conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+		_ = conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 		conn.SetPongHandler(func(string) error {
-			conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+			_ = conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 			return nil
 		})
 
@@ -119,7 +119,7 @@ func WSHandler(ingest ingestor, allowedOrigins []string, log *zap.Logger) gin.Ha
 			case <-done:
 				return
 			case <-pingTicker.C:
-				conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 					return
 				}

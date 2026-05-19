@@ -7,7 +7,9 @@ from semantic.settings import Settings, get_settings
 
 
 @lru_cache(maxsize=1)
-def _make_embedder(provider: str, model_name: str, model_hash: str, openai_key: str, openai_model: str):  # type: ignore[return]
+def _make_embedder(  # type: ignore[return]
+    provider: str, model_name: str, model_hash: str, openai_key: str, openai_model: str
+):
     if provider == "onnx":
         from semantic.embeddings.onnx import get_onnx_embedder
         return get_onnx_embedder(model_name)

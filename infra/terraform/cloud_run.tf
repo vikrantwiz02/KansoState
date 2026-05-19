@@ -44,7 +44,7 @@ resource "google_cloud_run_v2_service" "sentinel" {
       }
 
       env {
-        name = "REDACTION_KMS_KEY_ID"
+        name  = "REDACTION_KMS_KEY_ID"
         value = google_kms_crypto_key.redaction.id
       }
 

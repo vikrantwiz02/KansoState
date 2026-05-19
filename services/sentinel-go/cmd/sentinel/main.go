@@ -40,7 +40,7 @@ func main() {
 	if err != nil {
 		panic("log: " + err.Error())
 	}
-	defer log.Sync()
+	defer func() { _ = log.Sync() }()
 
 	if err := run(cfg, log); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal("sentinel: fatal error", zap.Error(err))

@@ -22,7 +22,6 @@ type Store struct {
 type meetingStore struct {
 	mu        sync.Mutex
 	ring      []timedEvent
-	head      int
 	subs      []chan apiv1.SSEEnvelope
 	consensus float32
 	stale     bool
