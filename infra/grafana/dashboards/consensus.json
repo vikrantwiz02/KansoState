@@ -1,0 +1,38 @@
+{
+  "title": "KansoState — Consensus",
+  "uid": "kanso-consensus",
+  "panels": [
+    {
+      "title": "Consensus Score (p50/p95/p99)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (le)(rate(kanso_e2e_latency_ms_bucket[1m])))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum by (le)(rate(kanso_e2e_latency_ms_bucket[1m])))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum by (le)(rate(kanso_e2e_latency_ms_bucket[1m])))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "title": "Breaker State",
+      "type": "stat",
+      "targets": [
+        { "expr": "kanso_breaker_open", "legendFormat": "open" }
+      ]
+    },
+    {
+      "title": "Sticky Vec Fallbacks / s",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(kanso_sticky_vec_fallback_total[1m])", "legendFormat": "fallback/s" }
+      ]
+    },
+    {
+      "title": "Embed Queue Depth",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "kanso_embed_queue_depth", "legendFormat": "queue depth" }
+      ]
+    }
+  ],
+  "schemaVersion": 38,
+  "version": 1
+}

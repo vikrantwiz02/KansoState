@@ -1,0 +1,62 @@
+name: ci-dashboard
+
+on:
+  push:
+    paths:
+      - "apps/dashboard/**"
+      - ".github/workflows/ci-dashboard.yml"
+  pull_request:
+    paths:
+      - "apps/dashboard/**"
+
+jobs:
+  check-attribution:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - run: bash scripts/check-attribution.sh
+        env:
+          CI: "true"
+          BASE_SHA: ${{ github.event.before }}
+
+  typecheck-lint-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: apps/dashboard/pnpm-lock.yaml
+      - run: pnpm install
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm build
+
+  playwright:
+    runs-on: ubuntu-latest
+    needs: typecheck-lint-build
+    defaults:
+      run:
+        working-directory: apps/dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: pnpm install
+      - run: pnpm exec playwright install --with-deps chromium webkit
+      - run: pnpm test
+        env:
+          PLAYWRIGHT_TEST_BASE_URL: http://localhost:3000

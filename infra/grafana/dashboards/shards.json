@@ -1,0 +1,68 @@
+{
+  "title": "KansoState — Shards & Persistence",
+  "uid": "kanso-shards",
+  "panels": [
+    {
+      "title": "Shard Writes / s",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "sum(rate(kanso_shard_write_total[1m]))", "legendFormat": "writes/s" }
+      ]
+    },
+    {
+      "title": "Shard Rolls / s",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "rate(kanso_shard_roll_total[1m])", "legendFormat": "rolls/s" }
+      ]
+    },
+    {
+      "title": "WAL Writes / s",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "rate(kanso_wal_write_total[1m])", "legendFormat": "wal writes/s" }
+      ],
+      "alert": {
+        "conditions": [{ "evaluator": { "type": "gt", "params": [0] } }],
+        "message": "WAL is receiving writes — Firestore may be degraded"
+      }
+    },
+    {
+      "title": "WAL Replays / s",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "rate(kanso_wal_replay_total[1m])", "legendFormat": "wal replays/s" }
+      ]
+    },
+    {
+      "title": "Embed Cache Hit Rate",
+      "type": "gauge",
+      "gridPos": { "x": 0, "y": 16, "w": 8, "h": 6 },
+      "targets": [
+        {
+          "expr": "rate(kanso_embed_cache_hits_total[5m]) / (rate(kanso_embed_cache_hits_total[5m]) + rate(kanso_embed_cache_misses_total[5m]))",
+          "legendFormat": "hit rate"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 } }
+    },
+    {
+      "title": "Embed Queue Depth",
+      "type": "timeseries",
+      "gridPos": { "x": 8, "y": 16, "w": 16, "h": 6 },
+      "targets": [
+        { "expr": "kanso_embed_queue_depth", "legendFormat": "queue depth" }
+      ],
+      "fieldConfig": {
+        "defaults": { "thresholds": { "steps": [{ "value": 200, "color": "yellow" }, { "value": 500, "color": "red" }] } }
+      }
+    }
+  ],
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "10s"
+}

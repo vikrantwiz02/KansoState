@@ -1,0 +1,11 @@
+# Strings forbidden in any file, commit message, comment, log line, README, package metadata, or UI string.
+# check-attribution.sh scans diffs against this list.
+Claude
+Anthropic
+AI-generated
+AI-assisted
+AI-powered
+next-gen
+revolutionary
+supercharge
+Co-Authored-By: Claude

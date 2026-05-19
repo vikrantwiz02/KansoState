@@ -1,0 +1,7 @@
+[
+  { "name": "meeting_id",         "type": "STRING",    "mode": "REQUIRED" },
+  { "name": "ts",                 "type": "TIMESTAMP", "mode": "REQUIRED" },
+  { "name": "consensus",          "type": "FLOAT64",   "mode": "NULLABLE" },
+  { "name": "delta",              "type": "FLOAT64",   "mode": "NULLABLE" },
+  { "name": "n_speakers_active",  "type": "INTEGER",   "mode": "NULLABLE" }
+]

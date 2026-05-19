@@ -1,0 +1,14 @@
+[
+  { "name": "meeting_id",       "type": "STRING",    "mode": "REQUIRED" },
+  { "name": "utterance_id",     "type": "STRING",    "mode": "REQUIRED" },
+  { "name": "speaker_id",       "type": "STRING",    "mode": "REQUIRED" },
+  { "name": "arrived_at",       "type": "TIMESTAMP", "mode": "REQUIRED" },
+  { "name": "redacted_text",    "type": "STRING",    "mode": "NULLABLE" },
+  { "name": "intent_vec",       "type": "FLOAT64",   "mode": "REPEATED" },
+  { "name": "consensus",        "type": "FLOAT64",   "mode": "NULLABLE" },
+  { "name": "consensus_delta",  "type": "FLOAT64",   "mode": "NULLABLE" },
+  { "name": "cultural_tags",    "type": "STRING",    "mode": "REPEATED" },
+  { "name": "vclock_json",      "type": "STRING",    "mode": "NULLABLE" },
+  { "name": "shard_id",         "type": "STRING",    "mode": "NULLABLE" },
+  { "name": "embedding_model",  "type": "STRING",    "mode": "NULLABLE" }
+]

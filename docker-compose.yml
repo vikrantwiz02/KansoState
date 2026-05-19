@@ -1,0 +1,100 @@
+version: "3.9"
+
+services:
+  sentinel:
+    build:
+      context: services/sentinel-go
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - KANSO_ENV=development
+      - EMBEDDER_URLS=http://semantic-1:8090,http://semantic-2:8090
+      - FIRESTORE_EMULATOR_HOST=firestore:8081
+      - LOG_LEVEL=info
+      - SENTINEL_API_KEY=${SENTINEL_API_KEY:-dev-local-key}
+      - ALLOWED_ORIGINS=http://localhost:3000
+    depends_on:
+      - semantic-1
+      - semantic-2
+      - firestore
+    restart: unless-stopped
+
+  semantic-1:
+    build:
+      context: services/semantic-py
+      dockerfile: Dockerfile
+    ports:
+      - "8090:8090"
+    environment:
+      - EMBEDDING_PROVIDER=sentence_transformers
+      - MODEL_NAME=all-MiniLM-L6-v2
+      - LOG_LEVEL=info
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  semantic-2:
+    build:
+      context: services/semantic-py
+      dockerfile: Dockerfile
+    environment:
+      - EMBEDDING_PROVIDER=sentence_transformers
+      - MODEL_NAME=all-MiniLM-L6-v2
+      - LOG_LEVEL=info
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  dashboard:
+    build:
+      context: apps/dashboard
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - SENTINEL_URL=http://sentinel:8080
+      - SENTINEL_API_KEY=${SENTINEL_API_KEY:-dev-local-key}
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-dev-secret-change-in-prod}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - SENTINEL_WS_URL=ws://localhost:8080
+    depends_on:
+      - sentinel
+    restart: unless-stopped
+
+  firestore:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    command: gcloud emulators firestore start --host-port=0.0.0.0:8081
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    restart: unless-stopped
+

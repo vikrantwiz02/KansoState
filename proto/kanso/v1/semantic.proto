@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package kanso.v1;
+
+option go_package = "github.com/kansostate/sentinel/gen/kanso/v1";
+
+// EmbedRequest is the body sent from Sentinel to the semantic sidecar.
+// Texts are PII-redacted before leaving Sentinel; originals never cross the wire.
+message EmbedRequest {
+  repeated string texts       = 1; // max 64 per batch
+  string          model_hint  = 2;
+  string          traceparent = 3; // W3C trace context for distributed tracing
+}
+
+// EmbedResponse is the sidecar's response to an EmbedRequest.
+message EmbedResponse {
+  message Vector {
+    repeated float values = 1;
+  }
+  repeated Vector vectors = 1; // parallel to request.texts
+  string          model   = 2;
+  int32           took_ms = 3;
+}
+
+// CultureClassifyRequest is sent at most once per meeting per 30 s.
+message CultureClassifyRequest {
+  repeated string window      = 1; // redacted utterances
+  string          lang_hint   = 2;
+  string          traceparent = 3;
+  string          meeting_id  = 4; // for server-side throttling
+}
+
+// CultureClassifyResponse provides communication-style tags and a bridge note.
+message CultureClassifyResponse {
+  repeated string tags        = 1;
+  string          bridge_note = 2;
+  int32           took_ms     = 3;
+}

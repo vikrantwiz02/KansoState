@@ -1,0 +1,22 @@
+# Common first names used for PII detection.
+# Names are only redacted when a salutation/pronoun appears within 4 tokens.
+alice
+bob
+carol
+dave
+eve
+frank
+grace
+henry
+iris
+jack
+kate
+liam
+maya
+noah
+olivia
+peter
+quinn
+ruby
+sam
+tara

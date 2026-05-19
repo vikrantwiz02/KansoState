@@ -1,0 +1,50 @@
+{
+  "title": "KansoState — Redaction",
+  "uid": "kanso-redaction",
+  "panels": [
+    {
+      "title": "Redact Latency p50 / p95 / p99 (µs)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (le)(rate(kanso_redact_latency_us_bucket[1m])))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum by (le)(rate(kanso_redact_latency_us_bucket[1m])))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum by (le)(rate(kanso_redact_latency_us_bucket[1m])))", "legendFormat": "p99" }
+      ],
+      "fieldConfig": {
+        "defaults": { "thresholds": { "steps": [{ "value": 50000, "color": "red" }] } }
+      }
+    },
+    {
+      "title": "Messages Processed / s",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "rate(kanso_redact_latency_us_count[1m])", "legendFormat": "redact/s" }
+      ]
+    },
+    {
+      "title": "Drop Rate by Stage",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 24, "h": 8 },
+      "targets": [
+        { "expr": "rate(kanso_drop_total[1m])", "legendFormat": "{{stage}}" }
+      ]
+    },
+    {
+      "title": "Active WS Connections",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 16, "w": 6, "h": 4 },
+      "targets": [{ "expr": "kanso_active_ws_connections" }]
+    },
+    {
+      "title": "SSE Subscribers",
+      "type": "stat",
+      "gridPos": { "x": 6, "y": 16, "w": 6, "h": 4 },
+      "targets": [{ "expr": "kanso_sse_subscribers" }]
+    }
+  ],
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "10s"
+}

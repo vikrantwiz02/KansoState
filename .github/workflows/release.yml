@@ -1,0 +1,31 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: check attribution
+        run: bash scripts/check-attribution.sh
+        env:
+          CI: "true"
+          BASE_SHA: HEAD^
+      - name: build sentinel
+        run: |
+          docker build -t ghcr.io/${{ github.repository }}/sentinel:${{ github.ref_name }} services/sentinel-go
+          docker push ghcr.io/${{ github.repository }}/sentinel:${{ github.ref_name }}
+      - name: build semantic
+        run: |
+          docker build -t ghcr.io/${{ github.repository }}/semantic:${{ github.ref_name }} services/semantic-py
+          docker push ghcr.io/${{ github.repository }}/semantic:${{ github.ref_name }}
+      - name: create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true

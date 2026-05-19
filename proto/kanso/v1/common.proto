@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package kanso.v1;
+
+option go_package = "github.com/kansostate/sentinel/gen/kanso/v1";
+
+// VClock is a logical vector clock snapshot attached to each utterance.
+message VClock {
+  map<string, uint64> counters = 1;
+}
+
+// TokenKind classifies a redacted PII span.
+enum TokenKind {
+  TOKEN_KIND_UNSPECIFIED = 0;
+  TOKEN_KIND_EMAIL       = 1;
+  TOKEN_KIND_CARD        = 2;
+  TOKEN_KIND_PHONE       = 3;
+  TOKEN_KIND_IBAN        = 4;
+  TOKEN_KIND_MYNUMBER    = 5;
+  TOKEN_KIND_NAME        = 6;
+  TOKEN_KIND_KEYWORD     = 7;
+}
+
+// RedactedToken is a single PII span replaced by a placeholder.
+message RedactedToken {
+  TokenKind kind        = 1;
+  string    placeholder = 2; // e.g. "[EMAIL_1]"
+  int32     start       = 3; // byte offset in original text
+  int32     end         = 4;
+  bytes     hash        = 5; // sha256 of original + meeting salt (32 bytes)
+}

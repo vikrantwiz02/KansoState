@@ -1,0 +1,28 @@
+{
+  "title": "KansoState — Ingest",
+  "uid": "kanso-ingest",
+  "panels": [
+    {
+      "title": "Active WS Connections",
+      "type": "stat",
+      "targets": [{ "expr": "kanso_active_ws_connections" }]
+    },
+    {
+      "title": "SSE Subscribers",
+      "type": "stat",
+      "targets": [{ "expr": "kanso_sse_subscribers" }]
+    },
+    {
+      "title": "Drop Rate by Stage",
+      "type": "timeseries",
+      "targets": [{ "expr": "rate(kanso_drop_total[1m])", "legendFormat": "{{stage}}" }]
+    },
+    {
+      "title": "E2E Latency p95 (ms)",
+      "type": "timeseries",
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le)(rate(kanso_e2e_latency_ms_bucket[1m])))", "legendFormat": "p95" }]
+    }
+  ],
+  "schemaVersion": 38,
+  "version": 1
+}

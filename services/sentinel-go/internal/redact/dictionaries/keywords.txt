@@ -1,0 +1,15 @@
+# Domain-specific PII keywords. Always redacted regardless of context.
+password
+secret
+api_key
+apikey
+access_token
+refresh_token
+private_key
+client_secret
+bearer
+ssn
+social security
+tax id
+passport
+national id

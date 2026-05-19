@@ -1,0 +1,58 @@
+groups:
+  - name: kanso.slo
+    rules:
+      - alert: E2ELatencyHigh
+        expr: histogram_quantile(0.95, sum by (le)(rate(kanso_e2e_latency_ms_bucket[1m]))) > 2000
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 e2e latency > 2s SLO"
+
+      - alert: RedactLatencyHigh
+        expr: histogram_quantile(0.99, sum by (le)(rate(kanso_redact_latency_us_bucket[1m]))) > 50000
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p99 redaction latency > 50ms"
+
+      - alert: DropRateNonZero
+        expr: rate(kanso_drop_total[1m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Messages being dropped: {{ $labels.stage }}"
+
+      - alert: BreakerOpen
+        expr: kanso_breaker_open == 1
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Embedder circuit breaker is open — using sticky-vec fallback"
+
+      - alert: EmbedQueueDepthHigh
+        expr: kanso_embed_queue_depth > 500
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Embed queue depth > 500 — consider scaling semantic replicas"
+
+      - alert: FirestoreWriteQuota70
+        expr: rate(kanso_shard_write_total[5m]) > 350
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Approaching 70% of Firestore write quota"
+
+      - alert: GCPauseHigh
+        expr: rate(go_gc_pause_ns_sum[1m]) / rate(go_gc_pause_ns_count[1m]) > 1e6
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Average GC pause > 1ms in sentinel"

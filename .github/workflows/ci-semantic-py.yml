@@ -1,0 +1,51 @@
+name: ci-semantic-py
+
+on:
+  push:
+    paths:
+      - "services/semantic-py/**"
+      - ".github/workflows/ci-semantic-py.yml"
+  pull_request:
+    paths:
+      - "services/semantic-py/**"
+
+jobs:
+  check-attribution:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - run: bash scripts/check-attribution.sh
+        env:
+          CI: "true"
+          BASE_SHA: ${{ github.event.before }}
+
+  lint-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/semantic-py
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: install
+        run: pip install -e ".[dev]"
+      - name: ruff
+        run: ruff check . && ruff format --check .
+      - name: mypy
+        run: mypy --strict src/
+      - name: pytest
+        run: pytest --hypothesis-profile=ci -v
+      - name: bandit
+        run: pip install bandit && bandit -r src/ -ll
+      - name: docker build
+        run: docker build -t kanso-semantic:ci .
+      - name: trivy scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: kanso-semantic:ci
+          severity: HIGH,CRITICAL
+          exit-code: "1"

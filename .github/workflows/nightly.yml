@@ -1,0 +1,46 @@
+name: nightly
+
+on:
+  schedule:
+    - cron: "0 2 * * *"  # 02:00 UTC daily
+  workflow_dispatch:
+
+jobs:
+  fuzz-redact:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/sentinel-go
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+      - name: fuzz redact (60 s)
+        run: go test -fuzz=FuzzRedactorRoundtrip -fuzztime=60s ./test/...
+      - name: fuzz redact unit (60 s)
+        run: go test -fuzz=FuzzRedact -fuzztime=60s ./internal/redact/...
+
+  bench-baselines:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/sentinel-go
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+      - name: run benchmarks
+        run: go test -bench=. -benchmem -count=3 -run='^$' ./... | tee bench-results.txt
+      - name: gate consensus bench (must clear 200 ns/op = 5M ops/s)
+        run: |
+          ops=$(grep 'BenchmarkConsensus_Update' bench-results.txt | awk '{print $3}' | head -1 | tr -d 'ns/op')
+          echo "consensus: ${ops} ns/op"
+          [ "${ops}" -le 200 ] || (echo "FAIL: consensus bench ${ops} ns/op > 200 ns/op gate" && exit 1)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: services/sentinel-go/bench-results.txt

@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package kanso.v1;
+
+import "kanso/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/kansostate/sentinel/gen/kanso/v1";
+
+// Utterance is a raw decoded message received from a WebSocket client.
+message Utterance {
+  string     meeting_id  = 1;
+  string     speaker_id  = 2;
+  uint64     seq         = 3;
+  google.protobuf.Timestamp arrived_at = 4;
+  string     text        = 5; // raw text — PII present, never logged
+  VClock     vclock      = 6;
+}
+
+// RedactedUtterance is an utterance with PII replaced by placeholders.
+message RedactedUtterance {
+  Utterance             utterance     = 1;
+  repeated RedactedToken redactions   = 2;
+  string                redacted_text = 3; // safe to log and send to sidecar
+}
+
+// ConsensusEvent is emitted by the consensus engine for SSE delivery.
+message ConsensusEvent {
+  string meeting_id = 1;
+  string speaker_id = 2;
+  float  score      = 3; // EMA-smoothed C ∈ [-1, 1]
+  float  delta      = 4; // signed change from previous score
+  float  drift      = 5; // 1 - cosine(last_vec, baseline_vec)
+  bool   stale      = 6; // true when embedder circuit breaker is open
+  uint64 seq        = 7;
+}
+
+// SSEEnvelope is the envelope sent to dashboard subscribers.
+message SSEEnvelope {
+  string meeting_id = 1;
+  string type       = 2; // utterance | consensus | bridge | heartbeat | shutdown
+  bytes  payload    = 3; // JSON-encoded payload
+  uint64 seq        = 4;
+}
+
+// MeetingSnapshot is the response from the /hydrate endpoint.
+message MeetingSnapshot {
+  string             meeting_id      = 1;
+  repeated SSEEnvelope events        = 2;
+  VClock             vclock          = 3;
+  float              consensus_score = 4;
+  bool               stale           = 5;
+}
+
+// WSInbound is a client message received over WebSocket.
+message WSInbound {
+  string type        = 1;
+  string meeting_id  = 2;
+  string speaker_id  = 3;
+  uint64 seq         = 4;
+  int64  ts_client_ms = 5;
+  string payload     = 6;
+}
+
+// WSAck is the acknowledgment returned to a WebSocket client.
+message WSAck {
+  uint64 ack_seq      = 1;
+  int64  server_ts_ms = 2;
+  int64  lag_ms       = 3;
+}

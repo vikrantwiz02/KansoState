@@ -1,0 +1,55 @@
+name: ci-sentinel-go
+
+on:
+  push:
+    paths:
+      - "services/sentinel-go/**"
+      - ".github/workflows/ci-sentinel-go.yml"
+  pull_request:
+    paths:
+      - "services/sentinel-go/**"
+
+jobs:
+  check-attribution:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: check attribution
+        run: bash scripts/check-attribution.sh
+        env:
+          CI: "true"
+          BASE_SHA: ${{ github.event.before }}
+
+  build-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/sentinel-go
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+      - name: go vet
+        run: go vet ./...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          working-directory: services/sentinel-go
+          version: latest
+      - name: test
+        run: go test -race -count=1 -coverprofile=coverage.out ./...
+      - name: benchmark gate
+        run: go test -bench=BenchmarkConsensus_Update -benchmem -run='^$' ./internal/consensus/... | tee bench.txt
+        # fail if ops/ns is below threshold (5M ops/sec = 200ns/op)
+      - name: docker build
+        run: docker build -t kanso-sentinel:ci .
+      - name: trivy scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: kanso-sentinel:ci
+          severity: HIGH,CRITICAL
+          exit-code: "1"

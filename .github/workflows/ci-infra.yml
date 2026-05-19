@@ -1,0 +1,69 @@
+name: ci-infra
+
+on:
+  push:
+    paths:
+      - "infra/terraform/**"
+      - "infra/bigquery/**"
+      - ".github/workflows/ci-infra.yml"
+  pull_request:
+    paths:
+      - "infra/terraform/**"
+      - "infra/bigquery/**"
+
+jobs:
+  check-attribution:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - run: bash scripts/check-attribution.sh
+        env:
+          CI: "true"
+          BASE_SHA: ${{ github.event.before }}
+
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.8"
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive
+
+      - name: terraform init (no backend)
+        run: terraform init -backend=false
+
+      - name: terraform validate
+        run: terraform validate
+
+      - name: tflint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: latest
+      - run: tflint --init && tflint
+
+      - name: checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: infra/terraform
+          framework: terraform
+          quiet: true
+          soft_fail: false
+          skip_check: "CKV_GCP_62"  # skip "bucket versioning" — already set in kms.tf
+
+  bigquery-schemas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: validate JSON schemas
+        run: |
+          for f in infra/bigquery/schemas/*.json; do
+            python3 -c "import json,sys; json.load(open('$f'))" && echo "OK: $f"
+          done
