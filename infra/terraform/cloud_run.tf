@@ -1,11 +1,11 @@
 locals {
   sentinel_env = {
-    KANSO_ENV           = var.environment
+    KANSO_ENV            = var.environment
     FIRESTORE_PROJECT_ID = var.project_id
-    LOG_LEVEL           = "info"
-    EMBEDDER_URLS       = join(",", [
+    LOG_LEVEL            = "info"
+    EMBEDDER_URLS = join(",", [
       for i in range(var.semantic_replica_count) :
-      "https://${google_cloud_run_v2_service.semantic[i].uri}"
+      google_cloud_run_v2_service.semantic[i].uri
     ])
   }
 }
@@ -56,8 +56,8 @@ resource "google_cloud_run_v2_service" "sentinel" {
 
       startup_probe {
         http_get { path = "/healthz" }
-        failure_threshold     = 6
-        period_seconds        = 5
+        failure_threshold = 6
+        period_seconds    = 5
       }
     }
   }

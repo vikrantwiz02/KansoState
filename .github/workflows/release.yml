@@ -10,21 +10,44 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: write
     steps:
       - uses: actions/checkout@v4
+
       - name: check attribution
         run: bash scripts/check-attribution.sh
         env:
           CI: "true"
           BASE_SHA: HEAD^
-      - name: build sentinel
-        run: |
-          docker build -t ghcr.io/${{ github.repository }}/sentinel:${{ github.ref_name }} services/sentinel-go
-          docker push ghcr.io/${{ github.repository }}/sentinel:${{ github.ref_name }}
-      - name: build semantic
-        run: |
-          docker build -t ghcr.io/${{ github.repository }}/semantic:${{ github.ref_name }} services/semantic-py
-          docker push ghcr.io/${{ github.repository }}/semantic:${{ github.ref_name }}
+
+      - name: log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: build and push sentinel
+        uses: docker/build-push-action@v5
+        with:
+          context: services/sentinel-go
+          push: true
+          tags: ghcr.io/${{ github.repository }}/sentinel:${{ github.ref_name }}
+
+      - name: build and push semantic
+        uses: docker/build-push-action@v5
+        with:
+          context: services/semantic-py
+          push: true
+          tags: ghcr.io/${{ github.repository }}/semantic:${{ github.ref_name }}
+
+      - name: build and push dashboard
+        uses: docker/build-push-action@v5
+        with:
+          context: apps/dashboard
+          push: true
+          tags: ghcr.io/${{ github.repository }}/dashboard:${{ github.ref_name }}
+
       - name: create release
         uses: softprops/action-gh-release@v2
         with:

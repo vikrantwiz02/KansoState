@@ -28,3 +28,9 @@ Thumbs.db
 
 # Docker
 *.log
+
+# Terraform — tfvars contain secrets, never commit
+infra/terraform/terraform.tfvars
+infra/terraform/.terraform/
+infra/terraform/.terraform.lock.hcl
+infra/terraform/terraform.tfstate*

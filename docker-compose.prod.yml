@@ -1,0 +1,62 @@
+# Production overlay — used with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Architecture:
+#   Apache2 (port 80/443, host) routes by ServerName to localhost-only ports.
+#   Containers bind to 127.0.0.1 only — not reachable from outside.
+#   No two services share a port. Each domain maps to exactly one service.
+#
+#   Dashboard  → 127.0.0.1:3010 → Apache ServerName kansostate.vikrantkumar.site
+#   Sentinel   → 127.0.0.1:8180 → Apache ServerName api.kansostate.vikrantkumar.site
+#   Grafana    → 127.0.0.1:3011 → Apache ServerName grafana.kansostate.vikrantkumar.site
+#   Prometheus → 127.0.0.1:9091 → internal only (no public vhost)
+
+version: "3.9"
+
+services:
+
+  # ── Dashboard ──────────────────────────────────────────────────────────────
+  dashboard:
+    ports:
+      - "127.0.0.1:3010:3000"   # only Apache can reach this from the host
+    environment:
+      - NODE_ENV=production
+      - NEXTAUTH_URL=https://kansostate.vikrantkumar.site
+      - SENTINEL_URL=http://sentinel:8080          # container-to-container (internal)
+      - SENTINEL_WS_URL=wss://api.kansostate.vikrantkumar.site
+      - SENTINEL_PUBLIC_URL=https://api.kansostate.vikrantkumar.site
+
+  # ── Sentinel ───────────────────────────────────────────────────────────────
+  sentinel:
+    ports:
+      - "127.0.0.1:8180:8080"   # only Apache can reach this from the host
+    environment:
+      - KANSO_ENV=production
+      - ALLOWED_ORIGINS=https://kansostate.vikrantkumar.site
+      - LOG_LEVEL=info
+
+  # ── Semantic sidecars — internal only, no host port needed ─────────────────
+  semantic-1:
+    ports: []
+
+  semantic-2:
+    ports: []
+
+  # ── Firestore — internal only ─────────────────────────────────────────────
+  firestore:
+    ports: []
+
+  # ── Prometheus — internal only ─────────────────────────────────────────────
+  prometheus:
+    ports:
+      - "127.0.0.1:9091:9090"
+
+  # ── Grafana — optional public vhost ────────────────────────────────────────
+  grafana:
+    ports:
+      - "127.0.0.1:3011:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-changeme-in-env}
+      - GF_SERVER_ROOT_URL=https://grafana.kansostate.vikrantkumar.site
+      - GF_USERS_ALLOW_SIGN_UP=false
+
