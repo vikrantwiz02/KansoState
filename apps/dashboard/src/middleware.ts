@@ -25,7 +25,7 @@ function buildCsp(): string {
   const wsOrigin = sentinelWsOrigin(SENTINEL_PUBLIC_URL);
   return [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'",
+    "script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com",
     "style-src 'self' 'unsafe-inline'",
     `connect-src 'self' ${httpOrigin} ${wsOrigin}`,
     "img-src 'self' data:",
@@ -53,7 +53,7 @@ export async function middleware(req: NextRequest) {
   res.headers.set("X-Frame-Options", "DENY");
   res.headers.set("X-Content-Type-Options", "nosniff");
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.headers.set("Permissions-Policy", "camera=*, microphone=*, geolocation=()");
   res.headers.set(
     "Strict-Transport-Security",
     "max-age=63072000; includeSubDomains; preload",
