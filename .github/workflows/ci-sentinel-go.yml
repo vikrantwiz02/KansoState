@@ -20,7 +20,7 @@ jobs:
         run: bash scripts/check-attribution.sh
         env:
           CI: "true"
-          BASE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.before || '' }}
 
   build-test:
     runs-on: ubuntu-latest
