@@ -145,9 +145,9 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
   const toggleMic = useCallback(async () => {
     setMicError(null);
 
-    if (listening) {
+    if (recognitionRef.current) {
       intentionalStop.current = true;
-      recognitionRef.current?.stop();
+      recognitionRef.current.stop();
       recognitionRef.current = null;
       cancelAnimationFrame(animFrameRef.current);
       audioCtxRef.current?.close().catch(() => {});
@@ -233,7 +233,7 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
     recognition.start();
     recognitionRef.current = recognition;
     setListening(true);
-  }, [listening, sendUtterance]);
+  }, [sendUtterance]); // `listening` removed — we use recognitionRef.current for the stop/start decision
 
   function handleSubmit() {
     sendUtterance(text);

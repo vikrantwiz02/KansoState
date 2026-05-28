@@ -44,6 +44,7 @@ export function VideoCall({ meetingId, peerId, onJoinedChange }: Props) {
   const localVideoRef     = useRef<HTMLVideoElement | null>(null);
   const localStreamRef    = useRef<MediaStream | null>(null);
   const wsRef             = useRef<WebSocket | null>(null);
+  const joiningRef        = useRef(false);
   const pcsRef            = useRef<Map<string, RTCPeerConnection>>(new Map());
   const remoteStreamsRef  = useRef<Map<string, MediaStream>>(new Map());
   const remoteVideoRefs   = useRef<Map<string, HTMLVideoElement>>(new Map());
@@ -104,6 +105,7 @@ export function VideoCall({ meetingId, peerId, onJoinedChange }: Props) {
 
     pc.ontrack = (e) => {
       const stream = e.streams[0];
+      if (!stream) return;
       remoteStreamsRef.current.set(remotePeerId, stream);
       const vid = remoteVideoRefs.current.get(remotePeerId);
       if (vid) { vid.srcObject = stream; vid.play().catch(() => {}); }
@@ -233,6 +235,8 @@ export function VideoCall({ meetingId, peerId, onJoinedChange }: Props) {
 
   // ── Actions ────────────────────────────────────────────────────────────────
   async function joinCall() {
+    if (joiningRef.current) return;
+    joiningRef.current = true;
     setPermError(null);
     setRawError(null);
 
@@ -268,29 +272,33 @@ export function VideoCall({ meetingId, peerId, onJoinedChange }: Props) {
             setPermError("no-device");
           }
           setRawError(`${name}: ${errMsg}`);
+          joiningRef.current = false;
           return;
         }
       }
     }
 
-    if (!stream) return;
+    if (!stream) { joiningRef.current = false; return; }
     localStreamRef.current = stream;
 
-    let res: Response;
+    let url: string | undefined;
     try {
-      res = await fetch(`/api/signal-ticket?meetingId=${encodeURIComponent(meetingId)}&peerId=${encodeURIComponent(peerId)}`);
-    } catch {
-      setRawError("Failed to fetch signal ticket");
+      const res = await fetch(`/api/signal-ticket?meetingId=${encodeURIComponent(meetingId)}&peerId=${encodeURIComponent(peerId)}`);
+      if (!res.ok) throw new Error(`Signal ticket HTTP ${res.status}`);
+      ({ url } = await res.json());
+    } catch (err) {
+      setRawError(err instanceof Error ? err.message : "Failed to fetch signal ticket");
       stream.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
+      joiningRef.current = false;
       return;
     }
 
-    const { url } = await res.json();
     if (!url) {
       setRawError("No signal URL returned");
       stream.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
+      joiningRef.current = false;
       return;
     }
 
@@ -316,9 +324,11 @@ export function VideoCall({ meetingId, peerId, onJoinedChange }: Props) {
       stream.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
       setRawError(err instanceof Error ? err.message : "Connection failed");
+      joiningRef.current = false;
       return;
     }
 
+    joiningRef.current = false;
     setJoined(true);
     onJoinedChange?.(true);
   }
