@@ -197,6 +197,7 @@ func (h *SignalHub) Handler(allowedOrigins []string, log *zap.Logger) gin.Handle
 			}
 			var msg signalMsg
 			if err := json.Unmarshal(data, &msg); err != nil {
+				log.Debug("signal: dropping malformed message", zap.Error(err))
 				continue
 			}
 			msg.From = peerID // enforce sender identity
@@ -218,12 +219,18 @@ func (h *SignalHub) Handler(allowedOrigins []string, log *zap.Logger) gin.Handle
 }
 
 func (h *SignalHub) sendTo(peer *signalPeer, msg signalMsg) {
-	raw, _ := json.Marshal(msg)
+	raw, err := json.Marshal(msg)
+	if err != nil {
+		return // drop unserializable message
+	}
 	trySend(peer, raw)
 }
 
 func (h *SignalHub) broadcast(room *signalRoom, exceptID string, msg signalMsg) {
-	raw, _ := json.Marshal(msg)
+	raw, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
 	room.mu.RLock()
 	defer room.mu.RUnlock()
 	for id, p := range room.peers {

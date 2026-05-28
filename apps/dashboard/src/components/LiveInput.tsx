@@ -106,7 +106,13 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
     }
     if (wsState === "connected" && !recognitionRef.current && !autoStartedRef.current && speechSupported) {
       autoStartedRef.current = true;
-      toggleMic();
+      // Await toggleMic so we can detect if the mic was denied / failed to start.
+      void (async () => {
+        await toggleMic();
+        // If recognition still didn't start (mic denied, no device, etc.) let future
+        // wsState changes try again by resetting the flag.
+        if (!recognitionRef.current) autoStartedRef.current = false;
+      })();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoListen, wsState, speechSupported]);

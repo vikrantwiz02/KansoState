@@ -13,8 +13,6 @@ make dev-up                   # docker compose up + health poll
 make seed                     # seed a 3-speaker synthetic meeting
 ```
 
-Services:
-
 | Service | URL | Notes |
 |---|---|---|
 | Dashboard | http://localhost:3000 | Google OAuth required |
@@ -37,7 +35,22 @@ make lint         # lint all services
 
 ---
 
-## Production deployment — Docker Compose (single server)
+## Production deployment — Docker Compose + Tailscale + Cloudflare
+
+This is the current production setup for **kansostate.vikrantkumar.site**.
+
+### Architecture summary
+
+```
+Internet → Cloudflare (DNS proxy) → Cloudflare Worker
+  → Tailscale Funnel (TLS, port 443)
+    → Apache2 :80 (routing by X-Kanso-Target)
+      → Docker containers (Dashboard :3010, Sentinel :8180, Grafana :3011)
+
+WebSocket (wss://fusion-virtual-machine.taila689d6.ts.net):
+  Browser → Tailscale Funnel directly (bypasses Worker)
+    → Apache2 :80 → Sentinel :8180
+```
 
 ### Server requirements
 
@@ -46,175 +59,218 @@ make lint         # lint all services
 | CPU | 2 vCPU | 4 vCPU |
 | RAM | 4 GB | 8 GB |
 | Disk | 20 GB | 40 GB |
-| OS | Ubuntu 22.04 LTS | Ubuntu 24.04+ LTS |
+| OS | Ubuntu 22.04 LTS | Ubuntu 24.04 LTS |
 
 ### 1. Install Docker
 
 ```sh
-sudo apt update
-sudo apt install -y ca-certificates curl gnupg
+sudo apt update && sudo apt install -y ca-certificates curl gnupg
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
   sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
   https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-sudo usermod -aG docker $USER
-sudo systemctl enable docker
+  sudo tee /etc/apt/sources.list.d/docker.list
+sudo apt update && sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo usermod -aG docker $USER && sudo systemctl enable docker
 ```
 
-### 2. Create shared Docker network
+### 2. Install Apache2 with required modules
 
 ```sh
-docker network create proxy
+sudo apt install -y apache2
+sudo a2enmod proxy proxy_http proxy_wstunnel ssl headers rewrite
+sudo systemctl enable apache2
 ```
 
-### 3. Set up Nginx Proxy Manager
-
-Nginx Proxy Manager handles SSL termination and domain routing for all hosted sites.
+### 3. Install Tailscale and enable Funnel
 
 ```sh
-mkdir -p ~/nginx-proxy-manager && cd ~/nginx-proxy-manager
-cat > docker-compose.yml << 'EOF'
-services:
-  npm:
-    image: jc21/nginx-proxy-manager:latest
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "81:81"
-    volumes:
-      - ./data:/data
-      - ./letsencrypt:/etc/letsencrypt
-    networks:
-      - proxy
-
-networks:
-  proxy:
-    external: true
-EOF
-docker compose up -d
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up --authkey=YOUR_TAILSCALE_AUTH_KEY
+sudo tailscale funnel --bg http://localhost:80
 ```
 
-Access the NPM admin UI at `http://SERVER_IP:81`.
-Default credentials: `admin@example.com` / `changeme` — **change immediately**.
+Verify Funnel is active:
+```sh
+tailscale funnel status
+# Should show: https://fusion-virtual-machine.taila689d6.ts.net -> http://localhost:80
+```
 
-### 4. Deploy KansoState
+### 4. Configure Apache2
+
+Copy the vhost configs:
+```sh
+sudo cp infra/apache/kansostate.conf /etc/apache2/sites-available/
+sudo cp infra/apache/kansostate-tailscale.conf /etc/apache2/sites-available/
+sudo a2ensite kansostate kansostate-tailscale
+sudo a2dissite 000-default
+sudo apache2ctl configtest && sudo systemctl restart apache2
+```
+
+`kansostate.conf` — routes by `ServerName` for direct connections  
+`kansostate-tailscale.conf` — routes by `X-Kanso-Target` header (set by Cloudflare Worker) for Tailscale-proxied connections
+
+### 5. Configure Cloudflare Worker
+
+The Worker (`infra/cloudflare-worker/worker.js`) injects the `X-Kanso-Target` header and routes HTTPS traffic. Deploy via Cloudflare dashboard → Workers:
+
+- Worker routes: `kansostate.vikrantkumar.site/*`, `grafana.kansostate.vikrantkumar.site/*`
+- **Do not** add a Worker route for `api.kansostate.vikrantkumar.site/*` — WebSocket traffic goes directly to Tailscale
+
+Set Worker environment variables (Settings → Variables):
+```
+TAILSCALE_FQDN = fusion-virtual-machine.taila689d6.ts.net
+```
+
+### 6. Set up environment
 
 ```sh
-mkdir -p ~/sites/kansostate && cd ~/sites/kansostate
-git clone https://github.com/your-org/kansostate .
+cd /path/to/KansoState
 cp .env.example .env
 ```
 
-Edit `.env` with production values:
-
-```sh
-GOOGLE_CLIENT_ID=your-client-id
-GOOGLE_CLIENT_SECRET=your-client-secret
-NEXTAUTH_SECRET=your-32-char-minimum-secret
-NEXTAUTH_URL=https://yourdomain.com
-SENTINEL_API_KEY=your-api-key
-SENTINEL_WS_URL=wss://api.yourdomain.com
+Edit `.env`:
+```dotenv
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+NEXTAUTH_SECRET=...            # openssl rand -base64 32
+NEXTAUTH_URL=https://kansostate.vikrantkumar.site
+SENTINEL_API_KEY=              # leave empty to disable auth (behind Tailscale)
+SENTINEL_WS_URL=wss://fusion-virtual-machine.taila689d6.ts.net
+SENTINEL_URL=http://sentinel:8080
+SENTINEL_PUBLIC_URL=https://api.kansostate.vikrantkumar.site
+GRAFANA_PASSWORD=changeme
 ```
 
-Use the production compose override:
+> **Note:** `SENTINEL_API_KEY` is intentionally empty in production. The Sentinel is protected by the network boundary (only reachable via Tailscale/Apache). If you need auth, set the same value in both dashboard and sentinel environments.
+
+### 7. Build and start
 
 ```sh
+docker compose -f docker-compose.yml -f docker-compose.prod.yml build
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
-### 5. Configure domains in Nginx Proxy Manager
-
-For each domain:
-1. **NPM UI → Proxy Hosts → Add Proxy Host**
-2. Domain: `yourdomain.com` → Forward to `dashboard:3000`
-3. Domain: `api.yourdomain.com` → Forward to `sentinel:8080` → enable **Websockets Support**
-4. SSL tab → Request Let's Encrypt certificate → Force SSL
-
-### 6. Update Google OAuth
-
-In [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials), add to **Authorized redirect URIs**:
+Check all containers are healthy:
+```sh
+docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 ```
-https://yourdomain.com/api/auth/callback/google
+
+### 8. Verify deployment
+
+```sh
+# Dashboard
+curl -I https://kansostate.vikrantkumar.site
+
+# Sentinel health
+curl https://api.kansostate.vikrantkumar.site/healthz
+
+# WebSocket (Tailscale direct)
+curl -v -N \
+  -H "Connection: Upgrade" -H "Upgrade: websocket" \
+  -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+  -H "Sec-WebSocket-Version: 13" \
+  "https://fusion-virtual-machine.taila689d6.ts.net/ws?meetingId=test"
+# Expected: HTTP/1.1 400 (upgrade rejected without valid meeting — correct)
+
+# SSE endpoint (container-to-container)
+docker exec kansostate-dashboard-1 \
+  curl -s http://sentinel:8080/sse?meetingId=test
 ```
+
+### 9. Google OAuth setup
+
+In Google Cloud Console → APIs & Services → Credentials → OAuth Client:
+- **Authorized JavaScript origins**: `https://kansostate.vikrantkumar.site`
+- **Authorized redirect URIs**: `https://kansostate.vikrantkumar.site/api/auth/callback/google`
+
+---
+
+## Day-2 operations
+
+### Restart a single service
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.prod.yml restart dashboard
+docker compose -f docker-compose.yml -f docker-compose.prod.yml restart sentinel
+```
+
+### Rebuild after code change
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.prod.yml build dashboard
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d dashboard
+```
+
+### View logs
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f sentinel
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f dashboard
+sudo tail -f /var/log/apache2/kansostate-ts-access.log
+sudo tail -f /var/log/apache2/kansostate-ts-error.log
+```
+
+### Check Apache routing
+
+```sh
+sudo apache2ctl -S          # show all vhosts
+sudo apache2ctl -M | grep proxy  # verify proxy modules loaded
+```
+
+### Scale semantic sidecars
+
+Add `semantic-3` in `docker-compose.yml` and add to `EMBEDDER_URLS`. Sentinel round-robins automatically.
 
 ---
 
 ## Alert response
 
-### `E2ELatencyHigh` — p95 > 2 s
+### Alert: `kanso_drop_total` increasing
 
-1. Check `kanso_embed_queue_depth` — if > 200, scale semantic replicas.
-2. Check `kanso_breaker_open` — if 1, embedder is down (see **BreakerOpen** below).
-3. Check `kanso_redact_latency_us` p99 — if > 10 ms, inspect Aho-Corasick dictionary size.
-4. Check GC pause (`go_gc_pause_ns`): if avg > 1 ms, look for allocation hot paths in redact or hotstore.
+**Cause**: `toEmbedder` or `toSSE` channel full (not `toShard` — that blocks).  
+**Action**: Check `kanso_queue_depth` metrics; if embedding sidecar is slow, check its logs. If channel overflow is sustained, scale the sidecar.
 
-### `BreakerOpen` — embedder circuit open
+### Alert: `stale=true` in UI / consensus not updating
 
-- Sentinel automatically falls back to sticky-vec; `consensus.stale=true` is set on all SSE events.
-- Dashboard shows the stale indicator. No data loss.
-- Check semantic sidecar logs: `docker compose logs semantic-1 semantic-2`
-- Common causes: OOM kill (model too large for container), Python exception loop.
-- Breaker auto-closes after `BREAKER_TIMEOUT` (default 5 s half-open probe).
+**Cause**: Circuit breaker tripped (embedding sidecar unreachable for 5+ failures).  
+**Check**:
+```sh
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs semantic-1
+curl http://localhost:8090/embed -X POST -H 'Content-Type: application/json' -d '{"texts":["test"]}'
+```
+**Action**: Restart sidecar; breaker auto-resets after 5 seconds in half-open state.
 
-### `DropRateNonZero`
-
-| Stage | Cause | Fix |
-|---|---|---|
-| `rawIn` | WS ingest overloaded | Add Sentinel replicas or reduce speaker count |
-| `toEmbedder` | Embed queue backed up | Scale semantic sidecars or increase `EmbedFlushEvery` |
-| `toShard` | Should never drop | Check Firestore throttling; inspect WAL size |
-
-### `FirestoreWriteQuota70`
-
-- Verify shard max events cap is set (default 50).
-- If legitimate load, request quota increase in GCP console before reaching 100%.
-
----
-
-## WAL replay
-
-If Sentinel restarted while Firestore was unavailable, WAL files may exist:
+### Alert: Sentinel health check failing
 
 ```sh
-ls /var/lib/kanso/wal/
-# e.g. /var/lib/kanso/wal/meet-abc123/wal.jsonl
+docker compose -f docker-compose.yml -f docker-compose.prod.yml ps sentinel
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs sentinel --tail=50
 ```
 
-WAL is replayed automatically on next startup per meeting. Monitor with:
+### Alert: WebSocket connections not establishing
+
+1. Check Tailscale Funnel status: `tailscale funnel status`
+2. Check Apache logs: `sudo tail -20 /var/log/apache2/kansostate-ts-error.log`
+3. Verify `SENTINEL_WS_URL` in dashboard container: `docker exec kansostate-dashboard-1 env | grep SENTINEL_WS_URL`
+
+### Alert: SSE "Connecting..." not resolving
+
+**Cause**: Sentinel `SENTINEL_API_KEY` mismatch — Sentinel may have a key set while dashboard sends a different (or no) key.  
+**Fix**: Set `SENTINEL_API_KEY=` (empty) in Sentinel's environment to disable auth:
 ```sh
-docker compose logs sentinel | grep "wal replay"
+# In docker-compose.prod.yml, under sentinel environment:
+- SENTINEL_API_KEY=
+# Then restart sentinel
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d sentinel
 ```
 
 ---
 
-## Chaos drill — kill semantic sidecar
+## Load testing
 
-```sh
-docker compose stop semantic-1 semantic-2
-
-# Expected within 5 s:
-# - gobreaker: closed → open
-# - kanso_breaker_open gauge = 1
-# - kanso_sticky_vec_fallback_total incrementing
-# - SSE events: stale=true
-# - E2E latency stays below 2 s SLO
-
-docker compose start semantic-1 semantic-2
-# Breaker half-opens after BREAKER_TIMEOUT (5 s) and closes on successful probes
-```
-
----
-
-## Load test
-
-Requires [k6](https://k6.io/docs/get-started/installation/).
+Requires [k6](https://k6.io/) and the full dev stack running.
 
 ```sh
 SENTINEL_WS=ws://localhost:8080/ws \
@@ -222,30 +278,4 @@ MEETING_ID=loadtest-$(date +%s) \
 k6 run tests/load/k6/100-speakers.js
 ```
 
-Pass criteria: p95 e2e < 2000 ms, p99 < 3500 ms, ws_errors < 10, toShard drops = 0.
-
----
-
-## Cutting a release
-
-```sh
-git tag v0.2.0
-git push origin v0.2.0
-# CI: attribution check → docker build → image push → GitHub release
-```
-
-See [release-v0.1.0.md](release-v0.1.0.md) for the full pre-release gate checklist.
-
----
-
-## KMS key rotation (GCP production)
-
-Terraform sets a 90-day automatic rotation schedule. To force rotation:
-
-```sh
-gcloud kms keys versions create \
-  --key=redaction \
-  --keyring=kanso \
-  --location=us-central1
-# Old version remains active for decryption; new version used for all new DEKs.
-```
+Pass criteria: p95 e2e < 2000 ms, p99 < 3500 ms, `ws_errors` < 10, `toShard` drops = 0.

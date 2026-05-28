@@ -1,14 +1,18 @@
 "use client";
 
 import { signIn } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 export function SignInButton() {
   const [loading, setLoading] = useState(false);
+  const searchParams = useSearchParams();
 
   async function handleSignIn() {
     setLoading(true);
-    await signIn("google", { callbackUrl: "/dashboard" });
+    // Preserve the original destination (e.g. the meeting URL from an invite link).
+    const callbackUrl = searchParams.get("callbackUrl") ?? "/dashboard";
+    await signIn("google", { callbackUrl });
   }
 
   return (

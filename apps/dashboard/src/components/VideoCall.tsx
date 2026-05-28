@@ -125,11 +125,14 @@ export function VideoCall({ meetingId, peerId, onJoinedChange }: Props) {
       }
     };
 
-    // Impolite peer creates the offer; polite peer waits.
+    // Impolite peer creates the offer via onnegotiationneeded; polite peer waits.
+    // signalingState guard prevents duplicate offers when we're mid-negotiation.
     if (!polite) {
       pc.onnegotiationneeded = async () => {
+        if (pc.signalingState !== "stable") return;
         try {
           await pc.setLocalDescription();
+          if (!pc.localDescription) return; // setLocalDescription failed silently
           send({ type: "offer", to: remotePeerId, payload: pc.localDescription });
         } catch {/* ignore */}
       };
@@ -150,14 +153,12 @@ export function VideoCall({ meetingId, peerId, onJoinedChange }: Props) {
 
     switch (msg.type) {
       case "room-state": {
+        // Just create the peer connections — onnegotiationneeded fires automatically
+        // once tracks are added and sends the offer. Doing it manually here would
+        // cause duplicate offers since onnegotiationneeded also fires.
         const existingPeers = ((msg.payload as Record<string, unknown>)?.peers as string[]) ?? [];
         for (const existingId of existingPeers) {
-          const pc = getPeerConn(existingId, false);
-          try {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            send({ type: "offer", to: existingId, payload: pc.localDescription });
-          } catch {/* ignore */}
+          getPeerConn(existingId, false);
         }
         break;
       }

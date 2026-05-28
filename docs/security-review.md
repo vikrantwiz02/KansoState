@@ -2,67 +2,112 @@
 
 ## Threat model
 
-KansoState processes real-time audio transcripts from business meetings. The primary risk is PII leakage from the processing pipeline into logs, external services, or the analytics store.
+KansoState processes real-time audio transcripts from business meetings. Primary risks:
+1. PII leakage from the processing pipeline into logs, external services, or analytics
+2. Unauthorized meeting access
+3. WebSocket/WebRTC spoofing or injection
+4. Supply-chain compromise
 
-## Controls
+---
 
-### PII in transit
+## Network boundary
+
+| Path | Protection |
+|---|---|
+| Browser → Cloudflare | TLS (Cloudflare terminates) |
+| Cloudflare → Tailscale Funnel | TLS (Tailscale edge terminates; Tailscale-managed cert) |
+| Tailscale Funnel → Apache | localhost only (no external exposure) |
+| Apache → Docker containers | 127.0.0.1 bindings only (`127.0.0.1:3010:3000` etc.) |
+| Dashboard → Sentinel (internal) | Docker bridge network; `http://sentinel:8080` not reachable from outside |
+| Sentinel → Semantic sidecar | Docker bridge network; internal only |
+
+No Docker port is exposed to the public internet (`0.0.0.0` binding). All external traffic must pass through Tailscale Funnel → Apache.
+
+---
+
+## Authentication
+
+### Dashboard
+
+- Google OAuth 2.0 via NextAuth v4; sessions are HTTP-only server-side cookies
+- All `/dashboard/*` and `/meetings/*` routes protected by middleware; unauthenticated requests redirected to `/auth/signin`
+- Authorized redirect URI must exactly match `https://kansostate.vikrantkumar.site/api/auth/callback/google`
+
+### Sentinel API key
+
+- `SENTINEL_API_KEY` gates all Sentinel endpoints with `Authorization: Bearer`, `X-Sentinel-Key` header, or `?token=` query param
+- When empty (current production default), auth middleware is a no-op — acceptable because Sentinel is only reachable via the Tailscale network boundary
+- If set, the same key must be configured in both dashboard and sentinel environments
+
+### WebRTC signaling
+
+- `msg.From` is overwritten by the server to the peer's authenticated `peerId` from the URL — prevents identity spoofing in relayed offers/answers
+- `peerId` comes from the user's session (NextAuth `session.user.name`) via `/api/signal-ticket`
+
+---
+
+## PII in transit
 
 | Surface | Control |
-|---------|---------|
-| Client → Sentinel | TLS (Cloud Run enforces HTTPS; WSS) |
-| Sentinel → sidecar | TLS (Cloud Run service-to-service; mTLS via Google-managed certs) |
-| Sentinel → Firestore | TLS (Google APIs) |
-| Sentinel → GCS (redaction maps) | TLS + KMS envelope encryption |
+|---|---|
+| Client → Sentinel (WS) | WSS; TLS terminated at Tailscale edge |
+| Sentinel → sidecar (HTTP) | Docker internal network; no TLS needed |
+| Sentinel → Firestore | TLS via Google APIs |
 
-### PII in logs
+---
 
-- Zap encoder has a field-level deny list: drops any field named `raw`, `text`, or `payload` unless `--debug-unsafe` is set.
-- `DEBUG_UNSAFE=true` is rejected at config validation time in the `production` environment.
-- CI grep (`ci-sentinel-go.yml`) scans for `debug-unsafe` in non-dev config files.
-- Structured log schema test in `internal/log/log_test.go` verifies no PII field leaks.
+## PII in logs
 
-### PII in Firestore
+- zap encoder has a field-level deny-list: drops any field named `raw`, `text`, or `payload` unless `--debug-unsafe` is set
+- `DEBUG_UNSAFE=true` is rejected at config validation time in the `production` environment
+- CI grep scans for `debug-unsafe` in non-dev config files
+- Structured log test verifies no PII field leaks
 
-- Only `redacted_text` (with `[KIND_n]` placeholders) is stored in shard documents.
-- The redaction map (placeholder → original) is AES-256-GCM encrypted, stored in GCS only.
-- The DEK is envelope-encrypted with the KMS KEK `projects/.../cryptoKeys/redaction`.
-- BigQuery contains only redacted text and placeholder hashes — no originals.
+---
 
-### Authentication
+## PII in persistence
 
-- Dashboard uses NextAuth Google provider; sessions are server-side.
-- Sentinel read API is behind Cloud Armor + IAP in production (Cloud Run IAM `allUsers` invoker is for dev; remove before prod).
-- Sidecar is only callable by Sentinel's service account (`roles/run.invoker`).
+- Only `redacted_text` (with `[KIND_n]` placeholders) is stored in Firestore shard documents
+- The redaction map (placeholder → original) is AES-256-GCM encrypted, stored separately in GCS
+- The DEK is envelope-encrypted with a KMS KEK
+- BigQuery contains only redacted text and placeholder hashes — no originals
 
-### Input validation
+---
 
-- WebSocket messages are JSON-decoded; malformed messages are logged (without payload) and dropped.
-- Embed batch size is capped at 64 (FastAPI validator + Sentinel client enforce this).
-- Vector dimension mismatch returns an error rather than silently miscomputing consensus.
+## Input validation
 
-### Supply chain
+| Surface | Validation |
+|---|---|
+| WebSocket messages | JSON-decoded; malformed messages logged (without payload) and dropped |
+| `meetingId` / `peerId` | Max 128 chars enforced at Sentinel and signal-ticket route |
+| Embed batch | Capped at 64 texts (FastAPI validator + Sentinel client) |
+| Vector dimension | Mismatch returns error; never silently miscomputes consensus |
+| WebSocket read limit | 64 KB per message (`conn.SetReadLimit`) |
 
-- Docker images are scanned by Trivy (HIGH/CRITICAL = build failure) in every CI run.
-- Go module hashes are pinned in `go.sum`.
-- Python model hash is pinned via `MODEL_HASH` env var and verified at startup.
-- No `npm install --no-audit`; pnpm audit runs in dashboard CI.
+---
 
-## Known risks and mitigations
+## WebRTC security
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|-----------|
-| Unredacted PII sent to embedding sidecar | Low | High | Redaction runs before the embed request; integration tests verify no `@` / card patterns in outbound text |
-| Log injection via crafted utterance text | Low | Medium | zap structured logging; no format strings from user input |
-| SSRF via `EMBEDDER_URLS` | Low | Medium | Config is environment-variable-only; not runtime-settable |
-| Firestore document too large | Low | Low | Shard capped at 50 events × ~2 KB = ~100 KB; Firestore max doc size is 1 MB |
-| Embedding model outputs leak meeting content | Low | Medium | Embeddings are 384-dim float vectors; no reconstruction attack is practical |
-| Compromised sidecar returns adversarial vectors | Low | Medium | Consensus score bounded to [-1, 1]; no code execution path from vectors |
+- ICE candidates: queued until `setRemoteDescription` completes; no candidate is added to a broken PC state
+- Screen share: `replaceTrack` is atomic across all peer connections; rollback on partial failure prevents track leakage to unintended peers
+- `onended` handler on screen tracks: automatic camera restoration when browser stop-share UI is used; no orphaned screen tracks
 
-## Outstanding items (pre-production)
+---
 
-- [ ] Replace `allUsers` Cloud Run invoker with IAP-protected load balancer
-- [x] Add rate limiting on `/ws` per `(ip, meetingId)` using Go token bucket — implemented in `internal/server/ratelimit.go` (5 burst, 1/s refill)
-- [x] Add `Content-Security-Policy` header in Next.js — implemented in `next.config.ts` `headers()` function; includes `frame-ancestors`, HSTS, `X-Content-Type-Options`, `Referrer-Policy`
-- [ ] Rotate KMS keys on the 90-day schedule set in Terraform
-- [ ] Complete penetration test of WebSocket endpoint before `v1.0.0`
+## Supply chain
+
+- Docker images scanned by Trivy (HIGH/CRITICAL → build failure) in every CI run
+- Go module hashes pinned in `go.sum`
+- Python model hash pinned via `MODEL_HASH` env var, verified at sidecar startup
+- pnpm audit runs in dashboard CI; `--no-audit` is not used
+
+---
+
+## Outstanding items
+
+| Item | Risk | Mitigation |
+|---|---|---|
+| No TURN server for WebRTC | P2P fails for symmetric NAT; users on restrictive networks cannot connect | STUN works for most home/office networks; TURN can be added via coturn |
+| `SENTINEL_API_KEY` empty in production | Sentinel accepts all requests if Tailscale boundary is breached | Acceptable given Tailscale isolation; set key if threat model changes |
+| Google OAuth allowed users | Any Google account can sign in | Add `GOOGLE_ALLOWED_EMAILS` allowlist in NextAuth config if needed |
+| No rate limiting on WebSocket messages | A malicious authenticated user could flood the pipeline | Per-(ip, meetingId) token bucket exists on reconnect storm; per-message rate limit not yet implemented |

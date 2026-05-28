@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { SignInButton } from "./SignInButton";
 import Link from "next/link";
+import { Suspense } from "react";
 
 export default async function SignInPage() {
   const session = await getServerSession(authOptions);
@@ -38,7 +39,9 @@ export default async function SignInPage() {
           <p className="text-sm text-slate-400 text-center mb-6">
             Sign in to access your meeting dashboard
           </p>
-          <SignInButton />
+          <Suspense fallback={null}>
+            <SignInButton />
+          </Suspense>
           <p className="text-xs text-slate-600 text-center mt-5">
             By signing in you agree to keep your meetings private.
           </p>

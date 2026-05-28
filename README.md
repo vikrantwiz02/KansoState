@@ -1,53 +1,100 @@
 # KansoState
 
-**Real-time meeting intelligence platform.** Deterministic state synchronization across concurrent speakers with sub-2-second end-to-end latency, live group video, and consensus scoring — all in the browser.
+**Real-time meeting intelligence platform.** Participants speak, and the system continuously scores semantic alignment across all speakers — surfacing convergence, divergence, and context notes before the meeting ends. Paired with native HD group video, auto-transcription, screen share, and a live intent graph.
+
+Live at **[kansostate.vikrantkumar.site](https://kansostate.vikrantkumar.site)**
 
 ---
 
-## What it does
+## What makes it different from anything in the market
 
-KansoState turns any distributed meeting into a structured, observable event stream. Participants join via browser, speak or type, and the system continuously computes semantic alignment scores across all speakers in real time.
+| Capability | KansoState | Zoom / Meet / Teams | Fireflies / Otter.ai | Miro / Notion AI |
+|---|---|---|---|---|
+| Real-time semantic consensus score | **Yes** | No | No | No |
+| Per-speaker semantic drift detection | **Yes** | No | No | No |
+| Auto-generated bridge notes mid-meeting | **Yes** | No | No | No |
+| Vector-clock causal utterance ordering | **Yes** | No | No | No |
+| PII-redacted embeddings (reversible) | **Yes** | No | Partial | No |
+| Circuit-breaker degradation (no data loss) | **Yes** | N/A | No | No |
+| Native WebRTC + intelligence in one product | **Yes** | Video only | Transcript only | No video |
+| Intent graph (live topic cluster map) | **Yes** | No | No | No |
+| Transcription auto-starts on video join | **Yes** | No | Plugin only | No |
+| 60-second hot-store (no Firestore reads on SSE) | **Yes** | N/A | N/A | N/A |
 
-- **Group video calling** — WebRTC mesh with automatic camera/microphone permission guidance
-- **Live speech transcription** — Web Speech API with audio level visualization
-- **Consensus scoring** — cosine similarity + EMA over sentence embeddings, updated per utterance
-- **Speaker timeline** — ordered, color-coded utterance history with vector-clock sequencing
-- **Bridge notes** — automatic cross-cultural context tags surfaced during the meeting
-- **Intent graph** — visual relationship map of speakers and semantic topics
-- **PII redaction** — Aho-Corasick + regex pipeline strips names, emails, and tokens before persistence
+### The core insight no other product captures
+
+Every meeting has a **consensus curve** — speakers start apart (forming), converge as they negotiate, then either align (consensus) or fragment (divergence). No existing tool measures this curve in real time. KansoState does, at the utterance level, and surfaces actionable bridge notes automatically ("alignment dropping — consider an explicit check-in", "strong alignment — good moment to record decisions").
+
+---
+
+## Features
+
+### Meeting intelligence
+- **Consensus gauge** — cosine similarity + EMA over 384-dim sentence embeddings, updated per utterance, visualised as a −1 → +1 arc
+- **Semantic drift** — per-speaker drift from their own historical centroid; surfaces "speaker-drift" bridge notes when a speaker shifts topic significantly
+- **Bridge notes** — rule-based AI context tags generated every 5 utterances: `converging`, `diverging`, `high-alignment`, `early-stage`, `speaker-drift`
+- **Speaker timeline** — vector-clock ordered utterance history, color-coded per speaker
+- **Intent graph** — live React Flow semantic topic cluster map
+
+### Video call
+- **HD group video** — WebRTC mesh, `1080p` ideal / `720p` min, 30 fps
+- **Noise cancellation + echo suppression** — browser-native `AudioContext` constraints
+- **Screen share** — atomic `replaceTrack` across all peer connections with camera rollback on failure
+- **Speaker / pin view** — click any tile to pin; sidebar shows other participants
+- **Grid view** — responsive 1 / 2 / 3-column layout up to any number of peers
+- **Fullscreen** — standard Fullscreen API, ESC to exit
+- **Auto-transcription on join** — speech recognition starts automatically when you join the video call; no separate click needed
+
+### Infrastructure
+- **Sub-2-second end-to-end latency** utterance → consensus render (p95)
+- **PII redaction** — Aho-Corasick + regex pipeline, only redacted text reaches embeddings and Firestore
+- **Circuit breaker** — embedding sidecar down → sticky-vec consensus, `stale` flag in UI, zero data loss
+- **WAL** — write-ahead log for Firestore unavailability; replays on startup
+- **ICE candidate queuing** — candidates arriving before `setRemoteDescription` are queued and drained; reliable WebRTC even on high-latency paths
 
 ---
 
 ## Architecture
 
 ```
-Browser clients
-  ├── WebRTC (mesh, /ws/signal)
-  ├── WebSocket utterances (/ws)
-  └── SSE subscription (/sse)
+Browser (Chrome / Edge)
+  ├── WebRTC mesh video  ──────── wss://[tailscale-fqdn]/ws/signal
+  ├── WebSocket utterances ─────── wss://[tailscale-fqdn]/ws
+  └── SSE subscription ─────────── /api/stream/[meetingId]  (server-side relay)
          │
          ▼
+  Next.js 15 (Dashboard)
+  ├── Google OAuth (NextAuth v4)
+  ├── /api/ws-ticket   — builds wss:// URL (API key never in client JS)
+  ├── /api/signal-ticket — builds signal wss:// URL
+  └── /api/stream/[id] — SSE proxy with Last-Event-Id resumption
+         │ http://sentinel:8080 (container-to-container)
+         ▼
   Sentinel (Go / Gin)
-  ├── Vector-clock ordering
-  ├── PII redaction pipeline
-  ├── Consensus engine (cosine + EMA)
-  ├── Circuit breaker → sticky-vec fallback
-  ├── Hot-store ring buffer (60 s)
-  └── Sharded Firestore persistence
+  ├── /ws           — WebSocket utterance ingestor
+  ├── /ws/signal    — WebRTC signaling hub (SignalHub)
+  ├── /sse          — SSE fan-out from hot-store ring buffer
+  ├── /healthz      — health probe
+  ├── /metrics      — Prometheus
+  └── Pipeline:
+      sync.Pool → worker pool (NumCPU) → PII redact → vclock.Tick
+      → toSSE utterance event → toEmbedder batch (50 ms flush)
+      → POST /embed → consensus.Update → hot-store ring.Append
+      → SSE subscribers → toShard → Firestore
          │
          ▼
   Semantic sidecar (Python / FastAPI) ×2
-  ├── POST /embed — 384-dim sentence vectors
-  └── POST /classify-culture — bridge note tags
-         │
-         ▼
-  Dashboard (Next.js 15 / App Router)
-  ├── Server components + SSR hydration
-  ├── Google OAuth (NextAuth v4)
-  └── Real-time SSE updates
+  ├── POST /embed        — batch up to 64 texts → 384-dim vectors
+  └── POST /classify-culture — few-shot cultural context classifier
+
+Production routing:
+  Browser → Cloudflare (DNS proxy) → Cloudflare Worker
+    → Tailscale Funnel (HTTPS, SNI-terminated)
+      → Apache2 (host routing by X-Kanso-Target header)
+        → Dashboard :3010 | Sentinel :8180 | Grafana :3011
 ```
 
-See [docs/architecture.md](docs/architecture.md) for full component breakdown and data-flow diagram.
+See [docs/architecture.md](docs/architecture.md) for the full component breakdown.
 
 ---
 
@@ -55,44 +102,33 @@ See [docs/architecture.md](docs/architecture.md) for full component breakdown an
 
 | Layer | Technology |
 |---|---|
-| Ingestor | Go 1.22, Gin, gorilla/websocket, sony/gobreaker |
-| Consensus | Go — cosine similarity, EMA α=0.2, vector-clock ordering |
-| Embeddings | Python 3.11, FastAPI, sentence-transformers (all-MiniLM-L6-v2) |
-| Frontend | Next.js 15, React 18, Tailwind CSS v4, Lucide React |
+| Ingestor / Signaling | Go 1.22, Gin, gorilla/websocket, sony/gobreaker |
+| Consensus | Go — cosine similarity, EMA α=0.2, per-speaker drift, vector clocks |
+| Embeddings | Python 3.11, FastAPI, sentence-transformers (all-MiniLM-L6-v2 / ONNX) |
+| Frontend | Next.js 15 App Router, React 18, Tailwind CSS v4, Lucide React |
+| Video | WebRTC (browser-native mesh), signaling relay in Go |
+| Speech | Web Speech API (Chrome / Edge), auto-starts on video call join |
 | Auth | NextAuth v4, Google OAuth 2.0 |
-| Video | WebRTC (browser native), signaling relay in Go |
-| Speech | Web Speech API (Chrome/Edge) |
 | Database | Google Firestore (emulator for dev) |
 | Observability | Prometheus, Grafana |
-| Infra | Docker Compose, Terraform (GCP) |
+| Infra (prod) | Docker Compose, Apache2, Tailscale Funnel, Cloudflare Worker |
+| Infra (cloud) | Terraform (GCP — Cloud Run, Firestore, KMS, BigQuery) |
 
 ---
 
-## Prerequisites
-
-| Tool | Version |
-|---|---|
-| Docker + Docker Compose | 24+ / v2.18+ |
-| Go | 1.22+ |
-| Python | 3.11+ |
-| Node.js | 20+ |
-| pnpm | 9+ |
-
----
-
-## Quick start
+## Quick start (local dev)
 
 ```sh
-# 1. Clone and enter
+# 1. Clone
 git clone https://github.com/your-org/kansostate
 cd KansoState
 
-# 2. Copy environment template
+# 2. Copy env template and fill in credentials
 cp .env.example .env
-# Fill in GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, NEXTAUTH_SECRET, SENTINEL_API_KEY
+# Required: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, NEXTAUTH_SECRET, SENTINEL_API_KEY
 
-# 3. Install dev tooling (pre-commit hook, Go deps, pnpm)
-make dev-setup
+# 3. Install dev tooling
+make dev-setup   # pre-commit hook, go mod tidy, pnpm install
 
 # 4. Start all services
 make dev-up
@@ -101,12 +137,10 @@ make dev-up
 make seed
 ```
 
-Services started:
-
 | Service | URL |
 |---|---|
 | Dashboard | http://localhost:3000 |
-| Sentinel API | http://localhost:8080 |
+| Sentinel | http://localhost:8080 |
 | Semantic sidecar | http://localhost:8090 |
 | Prometheus | http://localhost:9090 |
 | Grafana | http://localhost:3001 (admin / admin) |
@@ -120,13 +154,14 @@ Services started:
 |---|---|---|
 | `GOOGLE_CLIENT_ID` | Yes | Google OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | Yes | Google OAuth client secret |
-| `NEXTAUTH_SECRET` | Yes | NextAuth signing secret (min 32 chars) |
-| `NEXTAUTH_URL` | Yes | Full URL of the dashboard (e.g. `https://yourdomain.com`) |
+| `NEXTAUTH_SECRET` | Yes | NextAuth signing secret (≥ 32 chars) |
+| `NEXTAUTH_URL` | Yes | Full URL of the dashboard |
 | `SENTINEL_API_KEY` | Yes | Shared secret between dashboard and sentinel |
-| `SENTINEL_WS_URL` | Yes | WebSocket URL of sentinel (e.g. `wss://api.yourdomain.com`) |
-| `SENTINEL_URL` | Yes | HTTP URL of sentinel for SSR hydration |
-| `EMBEDDER_URLS` | No | Comma-separated semantic sidecar URLs (default: auto from compose) |
-| `LOG_LEVEL` | No | `debug`, `info`, `warn`, `error` (default: `info`) |
+| `SENTINEL_WS_URL` | Yes | Public WebSocket URL for browsers (`wss://...`) |
+| `SENTINEL_URL` | Yes | Internal HTTP URL for SSR hydration (`http://sentinel:8080`) |
+| `SENTINEL_PUBLIC_URL` | No | Public HTTPS URL for browser API calls |
+| `EMBEDDER_URLS` | No | Comma-separated sidecar URLs (default: from compose) |
+| `LOG_LEVEL` | No | `debug` / `info` / `warn` / `error` (default: `info`) |
 
 ---
 
@@ -135,7 +170,6 @@ Services started:
 ```sh
 make test          # all suites
 
-# Individual:
 make test-go       # go test -race -count=1 ./...
 make test-py       # pytest + mypy + ruff
 make test-dash     # pnpm typecheck + lint + playwright
@@ -145,13 +179,13 @@ make test-dash     # pnpm typecheck + lint + playwright
 
 ## Production deployment
 
-### Single-server (Docker Compose + Nginx Proxy Manager)
+### Single-server (Docker Compose + Tailscale + Cloudflare)
 
-See [docs/runbook.md](docs/runbook.md) for the full production deployment guide including:
-- Server setup and Docker installation
-- Nginx Proxy Manager for multi-site routing with automatic SSL
-- Environment variable configuration
-- Health checks and restart policies
+See [docs/runbook.md](docs/runbook.md) for the full guide covering:
+- Tailscale Funnel for public HTTPS without open firewall ports
+- Cloudflare Worker for multi-domain routing
+- Apache2 vhost setup with `X-Kanso-Target` header routing
+- Environment setup and container lifecycle
 
 ### Google Cloud (Terraform)
 
@@ -159,8 +193,8 @@ See [docs/runbook.md](docs/runbook.md) for the full production deployment guide 
 cd infra/terraform
 terraform init
 terraform plan -var="project_id=YOUR_PROJECT" \
-               -var="sentinel_image=ghcr.io/your-org/kanso-sentinel:v0.1.0" \
-               -var="semantic_image=ghcr.io/your-org/kanso-semantic:v0.1.0"
+               -var="sentinel_image=ghcr.io/your-org/kanso-sentinel:v0.2.0" \
+               -var="semantic_image=ghcr.io/your-org/kanso-semantic:v0.2.0"
 terraform apply
 ```
 
@@ -170,9 +204,9 @@ terraform apply
 
 | Metric | Target |
 |---|---|
-| End-to-end utterance → render p95 | < 2 s |
+| End-to-end utterance → consensus render p95 | < 2 s |
 | Redaction pipeline p95 at 200 msg/s | < 50 ms |
-| Consensus update p99 | < 10 µs |
+| Consensus update p99 (in-process) | < 10 µs |
 | Sentinel uptime | 99.9% |
 
 See [docs/slo.md](docs/slo.md) and [docs/perf-baselines.md](docs/perf-baselines.md).
