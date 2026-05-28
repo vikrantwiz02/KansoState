@@ -37,6 +37,7 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
   const analyserRef    = useRef<AnalyserNode | null>(null);
   const animFrameRef   = useRef<number>(0);
   const audioCtxRef    = useRef<AudioContext | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
 
   const wsRef           = useRef<WebSocket | null>(null);
   const seqRef          = useRef(1);
@@ -82,6 +83,8 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
       recognitionRef.current = null;
       audioCtxRef.current?.close().catch(() => {});
       audioCtxRef.current = null;
+      audioStreamRef.current?.getTracks().forEach((t) => t.stop());
+      audioStreamRef.current = null;
     };
   }, []);
 
@@ -98,6 +101,8 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
         cancelAnimationFrame(animFrameRef.current);
         audioCtxRef.current?.close().catch(() => {});
         audioCtxRef.current = null;
+        audioStreamRef.current?.getTracks().forEach((t) => t.stop());
+        audioStreamRef.current = null;
         setAudioLevel(0);
         setListening(false);
       }
@@ -157,6 +162,8 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
       cancelAnimationFrame(animFrameRef.current);
       audioCtxRef.current?.close().catch(() => {});
       audioCtxRef.current = null;
+      audioStreamRef.current?.getTracks().forEach((t) => t.stop());
+      audioStreamRef.current = null;
       setAudioLevel(0);
       setListening(false);
       return;
@@ -172,6 +179,8 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioCtxRef.current?.close().catch(() => {}); // close any previous context
+      audioStreamRef.current?.getTracks().forEach((t) => t.stop());
+      audioStreamRef.current = stream;
       const ctx = new AudioContext();
       audioCtxRef.current = ctx;
       const src = ctx.createMediaStreamSource(stream);
@@ -180,7 +189,6 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
       src.connect(analyser);
       analyserRef.current = analyser;
       startAudioLevelLoop(analyser);
-      stream.getTracks().forEach((t) => t.stop()); // SpeechRecognition opens its own
     } catch (err: unknown) {
       const errName = err instanceof DOMException ? err.name : "";
       const isAccessDenied =

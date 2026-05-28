@@ -136,11 +136,16 @@ func (h *SignalHub) Handler(allowedOrigins []string, log *zap.Logger) gin.Handle
 		}
 		room := h.room(meetingID)
 
-		// Register peer; collect existing peers to send room-state.
+		// Register peer; evict any stale connection with the same ID (e.g. page reload),
+		// and collect existing peers to send room-state.
 		room.mu.Lock()
 		existing := make([]string, 0, len(room.peers))
-		for id := range room.peers {
-			existing = append(existing, id)
+		for id, old := range room.peers {
+			if id == peerID {
+				old.conn.Close()
+			} else {
+				existing = append(existing, id)
+			}
 		}
 		room.peers[peerID] = peer
 		room.mu.Unlock()
@@ -172,9 +177,14 @@ func (h *SignalHub) Handler(allowedOrigins []string, log *zap.Logger) gin.Handle
 		defer func() {
 			conn.Close()
 
-			// Unregister peer.
+			// Only unregister if this peer is still the active one for this ID.
+			// A page-reload replaces room.peers[peerID] before this defer fires,
+			// so we must not evict the new connection or broadcast a stale peer-left.
 			room.mu.Lock()
-			delete(room.peers, peerID)
+			wasActive := room.peers[peerID] == peer
+			if wasActive {
+				delete(room.peers, peerID)
+			}
 			room.mu.Unlock()
 
 			// Signal write pump to stop, then wait for it.
@@ -182,9 +192,10 @@ func (h *SignalHub) Handler(allowedOrigins []string, log *zap.Logger) gin.Handle
 			close(peer.send)   // unblocks the write pump's range loop
 			<-writeDone
 
-			// Notify others and clean up room if empty.
-			h.broadcast(room, peerID, signalMsg{Type: "peer-left", From: peerID})
-			h.cleanupRoom(meetingID, room)
+			if wasActive {
+				h.broadcast(room, peerID, signalMsg{Type: "peer-left", From: peerID})
+				h.cleanupRoom(meetingID, room)
+			}
 			log.Info("signal: peer left", zap.String("meeting", meetingID), zap.String("peer", peerID))
 		}()
 

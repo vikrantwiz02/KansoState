@@ -76,9 +76,10 @@ export function VideoCall({ meetingId, peerId, onJoinedChange }: Props) {
 
   // ── Cleanup on unmount ─────────────────────────────────────────────────────
   useEffect(() => {
+    const pcs = pcsRef.current;
     return () => {
       wsRef.current?.close();
-      pcsRef.current.forEach((pc) => pc.close());
+      pcs.forEach((pc) => pc.close());
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
       screenStreamRef.current?.getTracks().forEach((t) => t.stop());
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
