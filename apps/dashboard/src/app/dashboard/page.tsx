@@ -2,8 +2,9 @@ import { listMeetings } from "@/lib/sentinel";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import Link from "next/link";
-import { Activity, ChevronRight, Radio, Clock, LogOut } from "lucide-react";
+import { Activity, ChevronRight, Radio, Clock } from "lucide-react";
 import { StartMeetingButton } from "@/components/StartMeetingButton";
+import { SignOutButton } from "@/components/SignOutButton";
 
 export const dynamic = "force-dynamic";
 
@@ -47,13 +48,7 @@ export default async function DashboardPage() {
               {session?.user?.email}
             </span>
           </div>
-          <Link
-            href="/api/auth/signout"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-500 hover:text-slate-300 hover:bg-white/[0.04] transition-all"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            Sign out
-          </Link>
+          <SignOutButton />
         </div>
       </nav>
 
