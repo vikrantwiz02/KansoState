@@ -34,13 +34,16 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
 
   // Audio level
   const [audioLevel, setAudioLevel] = useState(0);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const animFrameRef = useRef<number>(0);
+  const analyserRef    = useRef<AnalyserNode | null>(null);
+  const animFrameRef   = useRef<number>(0);
+  const audioCtxRef    = useRef<AudioContext | null>(null);
 
-  const wsRef = useRef<WebSocket | null>(null);
-  const seqRef = useRef(1);
+  const wsRef           = useRef<WebSocket | null>(null);
+  const seqRef          = useRef(1);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef  = useRef<any>(null);
+  // Set to true when the user deliberately stops; prevents the onend auto-restart.
+  const intentionalStop = useRef(false);
 
   useEffect(() => {
     setSpeechSupported(
@@ -73,23 +76,35 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
   }, [meetingId]);
 
   useEffect(() => {
-    return () => { cancelAnimationFrame(animFrameRef.current); };
+    return () => {
+      cancelAnimationFrame(animFrameRef.current);
+      intentionalStop.current = true;
+      recognitionRef.current?.stop();
+      recognitionRef.current = null;
+      audioCtxRef.current?.close().catch(() => {});
+      audioCtxRef.current = null;
+    };
   }, []);
 
   // Auto-start listening when the video call is joined; auto-stop when it ends.
+  // Uses recognitionRef (always current) instead of `listening` state to avoid stale closure.
   const autoStartedRef = useRef(false);
   useEffect(() => {
     if (!autoListen) {
       autoStartedRef.current = false;
-      if (listening) {
-        recognitionRef.current?.stop();
+      if (recognitionRef.current) {
+        intentionalStop.current = true;
+        recognitionRef.current.stop();
+        recognitionRef.current = null;
         cancelAnimationFrame(animFrameRef.current);
+        audioCtxRef.current?.close().catch(() => {});
+        audioCtxRef.current = null;
         setAudioLevel(0);
         setListening(false);
       }
       return;
     }
-    if (wsState === "connected" && !listening && !autoStartedRef.current && speechSupported) {
+    if (wsState === "connected" && !recognitionRef.current && !autoStartedRef.current && speechSupported) {
       autoStartedRef.current = true;
       toggleMic();
     }
@@ -131,8 +146,12 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
     setMicError(null);
 
     if (listening) {
+      intentionalStop.current = true;
       recognitionRef.current?.stop();
+      recognitionRef.current = null;
       cancelAnimationFrame(animFrameRef.current);
+      audioCtxRef.current?.close().catch(() => {});
+      audioCtxRef.current = null;
       setAudioLevel(0);
       setListening(false);
       return;
@@ -145,19 +164,19 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
       return;
     }
 
-    // Request mic permission first so we can show a clear error
+    // Request mic for the audio-level visualiser; SpeechRecognition manages its own stream.
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Wire up audio level visualiser
+      audioCtxRef.current?.close().catch(() => {}); // close any previous context
       const ctx = new AudioContext();
+      audioCtxRef.current = ctx;
       const src = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
       src.connect(analyser);
       analyserRef.current = analyser;
       startAudioLevelLoop(analyser);
-      // Stop the raw stream — SpeechRecognition opens its own
-      stream.getTracks().forEach((t) => t.stop());
+      stream.getTracks().forEach((t) => t.stop()); // SpeechRecognition opens its own
     } catch (err: unknown) {
       const errName = err instanceof DOMException ? err.name : "";
       const isAccessDenied =
@@ -165,18 +184,12 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
         (err instanceof Error && (err.message.includes("denied") || err.message.includes("Permission")));
 
       if (isAccessDenied) {
-        // Check if Chrome itself has "granted" permission — if so, macOS is blocking Chrome at OS level
         let permState: PermissionState | null = null;
         try {
           const p = await navigator.permissions.query({ name: "microphone" as PermissionName });
           permState = p.state;
-        } catch { /* not supported in all browsers */ }
-
-        if (permState === "granted") {
-          setMicError(MIC_ERRORS["macos-blocked"]);
-        } else {
-          setMicError(MIC_ERRORS["not-allowed"]);
-        }
+        } catch {/* not supported in all browsers */}
+        setMicError(permState === "granted" ? MIC_ERRORS["macos-blocked"] : MIC_ERRORS["not-allowed"]);
       } else {
         setMicError(MIC_ERRORS["audio-capture"]);
       }
@@ -199,17 +212,24 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
       if (e.error !== "aborted") {
         setMicError(MIC_ERRORS[e.error] ?? `Speech error: ${e.error}`);
       }
+      recognitionRef.current = null; // clear stale ref so restart doesn't loop
       cancelAnimationFrame(animFrameRef.current);
       setAudioLevel(0);
       setListening(false);
     };
     recognition.onend = () => {
-      // Auto-restart if we're still supposed to be listening
-      if (recognitionRef.current === recognition && listening) {
+      // Only auto-restart if this is still the active recognition AND the user
+      // hasn't deliberately stopped it (intentionalStop guard prevents the loop).
+      if (intentionalStop.current) {
+        intentionalStop.current = false;
+        return;
+      }
+      if (recognitionRef.current === recognition) {
         try { recognition.start(); } catch { setListening(false); }
       }
     };
 
+    intentionalStop.current = false;
     recognition.start();
     recognitionRef.current = recognition;
     setListening(true);

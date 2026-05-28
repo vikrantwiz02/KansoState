@@ -22,9 +22,10 @@ type signalMsg struct {
 }
 
 type signalPeer struct {
-	id   string
-	send chan []byte
-	conn *websocket.Conn
+	id     string
+	send   chan []byte
+	conn   *websocket.Conn
+	closed chan struct{} // closed when peer.send is no longer safe to write to
 }
 
 type signalRoom struct {
@@ -51,6 +52,42 @@ func (h *SignalHub) room(id string) *signalRoom {
 	r := &signalRoom{peers: make(map[string]*signalPeer)}
 	h.rooms[id] = r
 	return r
+}
+
+// cleanupRoom removes a room from the hub if it has no peers.
+func (h *SignalHub) cleanupRoom(id string, room *signalRoom) {
+	room.mu.RLock()
+	empty := len(room.peers) == 0
+	room.mu.RUnlock()
+	if !empty {
+		return
+	}
+	h.mu.Lock()
+	// Re-check under write lock to avoid TOCTOU.
+	if r, ok := h.rooms[id]; ok {
+		r.mu.RLock()
+		stillEmpty := len(r.peers) == 0
+		r.mu.RUnlock()
+		if stillEmpty {
+			delete(h.rooms, id)
+		}
+	}
+	h.mu.Unlock()
+}
+
+// trySend delivers a message to a peer without blocking.
+// Returns false and does nothing if the peer has already left.
+func trySend(peer *signalPeer, raw []byte) {
+	select {
+	case <-peer.closed:
+		// Peer already closed; discard safely — no panic on closed channel.
+	default:
+		select {
+		case peer.send <- raw:
+		default:
+			// Channel full; drop rather than block.
+		}
+	}
 }
 
 // Handler returns the Gin handler for /ws/signal.
@@ -89,10 +126,17 @@ func (h *SignalHub) Handler(allowedOrigins []string, log *zap.Logger) gin.Handle
 			return
 		}
 
-		peer := &signalPeer{id: peerID, send: make(chan []byte, 128), conn: conn}
+		// 512-slot buffer; large enough that a slow peer won't drop signaling
+		// messages (offers/answers/ICE) during normal load.
+		peer := &signalPeer{
+			id:     peerID,
+			send:   make(chan []byte, 512),
+			conn:   conn,
+			closed: make(chan struct{}),
+		}
 		room := h.room(meetingID)
 
-		// Register peer; collect existing peers to tell the newcomer.
+		// Register peer; collect existing peers to send room-state.
 		room.mu.Lock()
 		existing := make([]string, 0, len(room.peers))
 		for id := range room.peers {
@@ -101,19 +145,23 @@ func (h *SignalHub) Handler(allowedOrigins []string, log *zap.Logger) gin.Handle
 		room.peers[peerID] = peer
 		room.mu.Unlock()
 
-		// Send room state to the new peer.
+		// Send room-state to the new peer.
 		statePayload, _ := json.Marshal(map[string]interface{}{"peers": existing})
 		h.sendTo(peer, signalMsg{Type: "room-state", From: "server", Payload: statePayload})
 
 		// Notify existing peers.
 		h.broadcast(room, peerID, signalMsg{Type: "peer-joined", From: peerID})
 
-		// Write pump.
+		// Write pump: drains peer.send until the channel is closed.
 		writeDone := make(chan struct{})
 		go func() {
 			defer close(writeDone)
 			for data := range peer.send {
 				if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+					// Drain remaining messages so the range loop exits cleanly
+					// when the channel is eventually closed by the defer below.
+					for range peer.send { //nolint:revive
+					}
 					return
 				}
 			}
@@ -123,12 +171,20 @@ func (h *SignalHub) Handler(allowedOrigins []string, log *zap.Logger) gin.Handle
 		conn.SetReadLimit(wsMaxMessageBytes)
 		defer func() {
 			conn.Close()
+
+			// Unregister peer.
 			room.mu.Lock()
 			delete(room.peers, peerID)
 			room.mu.Unlock()
-			close(peer.send)
+
+			// Signal write pump to stop, then wait for it.
+			close(peer.closed) // mark as closed so trySend becomes a no-op
+			close(peer.send)   // unblocks the write pump's range loop
 			<-writeDone
+
+			// Notify others and clean up room if empty.
 			h.broadcast(room, peerID, signalMsg{Type: "peer-left", From: peerID})
+			h.cleanupRoom(meetingID, room)
 			log.Info("signal: peer left", zap.String("meeting", meetingID), zap.String("peer", peerID))
 		}()
 
@@ -152,10 +208,7 @@ func (h *SignalHub) Handler(allowedOrigins []string, log *zap.Logger) gin.Handle
 				room.mu.RUnlock()
 				if target != nil {
 					raw, _ := json.Marshal(msg)
-					select {
-					case target.send <- raw:
-					default:
-					}
+					trySend(target, raw)
 				}
 			} else {
 				h.broadcast(room, peerID, msg)
@@ -166,10 +219,7 @@ func (h *SignalHub) Handler(allowedOrigins []string, log *zap.Logger) gin.Handle
 
 func (h *SignalHub) sendTo(peer *signalPeer, msg signalMsg) {
 	raw, _ := json.Marshal(msg)
-	select {
-	case peer.send <- raw:
-	default:
-	}
+	trySend(peer, raw)
 }
 
 func (h *SignalHub) broadcast(room *signalRoom, exceptID string, msg signalMsg) {
@@ -180,9 +230,6 @@ func (h *SignalHub) broadcast(room *signalRoom, exceptID string, msg signalMsg) 
 		if id == exceptID {
 			continue
 		}
-		select {
-		case p.send <- raw:
-		default:
-		}
+		trySend(p, raw)
 	}
 }
