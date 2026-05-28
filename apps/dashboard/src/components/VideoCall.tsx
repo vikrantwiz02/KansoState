@@ -251,6 +251,17 @@ export function VideoCall({ meetingId, peerId }: Props) {
     if (audio) { audio.enabled = !audio.enabled; setMicOn(audio.enabled); }
   }
 
+  // Attach local stream to video element once the grid renders (joined=true).
+  // joinCall() sets srcObject before setJoined(true), so localVideoRef is null at that point.
+  useEffect(() => {
+    if (!joined || !localVideoRef.current || !localStreamRef.current) return;
+    const stream = localStreamRef.current;
+    if (stream.getVideoTracks().length > 0) {
+      localVideoRef.current.srcObject = stream;
+      localVideoRef.current.play().catch(() => {});
+    }
+  }, [joined]);
+
   useEffect(() => {
     return () => {
       wsRef.current?.close();
@@ -291,7 +302,7 @@ export function VideoCall({ meetingId, peerId }: Props) {
       <div className={`grid gap-1.5 p-2 bg-black/40 ${allParticipants.length === 1 ? "grid-cols-1" : allParticipants.length <= 4 ? "grid-cols-2" : "grid-cols-3"}`}>
         {/* Self */}
         <div className="relative rounded-xl overflow-hidden bg-slate-900 aspect-video">
-          <video ref={localVideoRef} muted playsInline className={`w-full h-full object-cover ${cameraOn ? "scale-x-[-1]" : "hidden"}`} />
+          <video ref={localVideoRef} autoPlay muted playsInline className={`w-full h-full object-cover ${cameraOn ? "scale-x-[-1]" : "hidden"}`} />
           {!cameraOn && (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-sm font-bold">
