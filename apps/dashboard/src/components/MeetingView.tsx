@@ -26,6 +26,7 @@ export function MeetingView({ initialSnapshot }: Props) {
   const [activeTab, setActiveTab] = useState<"timeline" | "graph">("timeline");
   const [speakerId, setSpeakerId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [callJoined, setCallJoined] = useState(false);
   const lastSeq = useRef(
     initialSnapshot.events.reduce((max, e) => Math.max(max, e.seq), 0)
   );
@@ -156,7 +157,7 @@ export function MeetingView({ initialSnapshot }: Props) {
 
             {/* Live input — only shown after name is picked */}
             {speakerId && (
-              <LiveInput meetingId={initialSnapshot.meeting_id} speakerId={speakerId} />
+              <LiveInput meetingId={initialSnapshot.meeting_id} speakerId={speakerId} autoListen={callJoined} />
             )}
           </div>
 
@@ -164,7 +165,7 @@ export function MeetingView({ initialSnapshot }: Props) {
           <div className="col-span-12 lg:col-span-8 space-y-5">
             {/* Live video call */}
             {speakerId && (
-              <VideoCall meetingId={initialSnapshot.meeting_id} peerId={speakerId} />
+              <VideoCall meetingId={initialSnapshot.meeting_id} peerId={speakerId} onJoinedChange={setCallJoined} />
             )}
 
             {/* Timeline / Intent graph */}

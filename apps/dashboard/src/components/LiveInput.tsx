@@ -9,6 +9,7 @@ import {
 interface Props {
   meetingId: string;
   speakerId: string;
+  autoListen?: boolean;
 }
 
 type WSState = "connecting" | "connected" | "disconnected" | "error";
@@ -22,7 +23,7 @@ const MIC_ERRORS: Record<string, string> = {
   "aborted":      "Listening stopped.",
 };
 
-export function LiveInput({ meetingId, speakerId }: Props) {
+export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
   const [text, setText] = useState("");
   const [wsState, setWsState] = useState<WSState>("connecting");
   const [listening, setListening] = useState(false);
@@ -74,6 +75,26 @@ export function LiveInput({ meetingId, speakerId }: Props) {
   useEffect(() => {
     return () => { cancelAnimationFrame(animFrameRef.current); };
   }, []);
+
+  // Auto-start listening when the video call is joined; auto-stop when it ends.
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (!autoListen) {
+      autoStartedRef.current = false;
+      if (listening) {
+        recognitionRef.current?.stop();
+        cancelAnimationFrame(animFrameRef.current);
+        setAudioLevel(0);
+        setListening(false);
+      }
+      return;
+    }
+    if (wsState === "connected" && !listening && !autoStartedRef.current && speechSupported) {
+      autoStartedRef.current = true;
+      toggleMic();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoListen, wsState, speechSupported]);
 
   const sendUtterance = useCallback(
     (utteranceText: string) => {
