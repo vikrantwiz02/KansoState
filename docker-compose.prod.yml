@@ -34,6 +34,7 @@ services:
       - KANSO_ENV=production
       - ALLOWED_ORIGINS=https://kansostate.vikrantkumar.site
       - LOG_LEVEL=info
+      - SENTINEL_API_KEY=
 
   # ── Semantic sidecars — internal only, no host port needed ─────────────────
   semantic-1:
