@@ -1,7 +1,39 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { ArrowRight, Activity, Shield, Zap, GitBranch, Timer, RefreshCcw } from "lucide-react";
+
+export const metadata: Metadata = {
+  title: "KansoState — Real-time meeting intelligence",
+  description:
+    "KansoState measures semantic alignment across every speaker in real time. Live consensus scoring, speaker timeline, intent graph, and PII redaction — know where your meeting stands as it happens.",
+  alternates: { canonical: "https://kansostate.vikrantkumar.site" },
+};
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "KansoState",
+  url: "https://kansostate.vikrantkumar.site",
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Web",
+  description:
+    "Real-time meeting intelligence platform. Measures semantic alignment across speakers, provides live consensus scoring, speaker timeline, intent graph, and PII redaction.",
+  offers: {
+    "@type": "Offer",
+    price: "0",
+    priceCurrency: "USD",
+  },
+  featureList: [
+    "Live consensus score",
+    "Speaker timeline",
+    "Intent graph",
+    "Bridge notes",
+    "PII redaction",
+    "Crash-safe WAL",
+  ],
+};
 
 export default async function LandingPage() {
   const session = await getServerSession(authOptions);
@@ -59,6 +91,10 @@ export default async function LandingPage() {
 
   return (
     <div className="min-h-screen bg-[#070810] text-slate-100 overflow-x-hidden">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       {/* Ambient orbs */}
       <div className="fixed inset-0 pointer-events-none">
         <div

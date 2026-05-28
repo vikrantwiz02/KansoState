@@ -1,9 +1,16 @@
+import type { Metadata } from "next";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { SignInButton } from "./SignInButton";
 import Link from "next/link";
 import { Suspense } from "react";
+
+export const metadata: Metadata = {
+  title: "Sign in",
+  description: "Sign in to KansoState to access your real-time meeting intelligence dashboard.",
+  robots: { index: false },
+};
 
 export default async function SignInPage() {
   const session = await getServerSession(authOptions);
