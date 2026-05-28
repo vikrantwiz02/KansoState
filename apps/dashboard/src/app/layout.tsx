@@ -65,6 +65,9 @@ export const metadata: Metadata = {
     },
   },
   category: "technology",
+  verification: {
+    google: "371WgyTVeiHLIM2qjaWCF0jT86KKk7tiq4S2vbJe-dw",
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
