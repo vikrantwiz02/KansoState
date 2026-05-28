@@ -54,9 +54,9 @@ export function MeetingView({ initialSnapshot }: Props) {
           setScore(c.score);
           setStale(c.stale);
         }
-        setConnected(true);
       },
-      () => setConnected(false)
+      () => setConnected(false),
+      () => setConnected(true)   // fires when EventSource opens — not on first event
     );
     return stop;
   }, [initialSnapshot.meeting_id]);

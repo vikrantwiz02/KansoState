@@ -8,7 +8,8 @@ export function connectSSE(
   meetingId: string,
   lastSeq: number,
   onEvent: SSEHandler,
-  onDisconnect: () => void
+  onDisconnect: () => void,
+  onConnect?: () => void
 ): () => void {
   let es: EventSource | null = null;
   let retryMs = 1000;
@@ -17,6 +18,7 @@ export function connectSSE(
   function connect() {
     const url = `/api/stream/${encodeURIComponent(meetingId)}`;
     es = new EventSource(url);
+    es.onopen = () => { if (!stopped) onConnect?.(); };
 
     es.addEventListener("utterance", (e: MessageEvent) => {
       try {
