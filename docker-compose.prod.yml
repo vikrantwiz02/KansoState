@@ -23,7 +23,7 @@ services:
       - NODE_ENV=production
       - NEXTAUTH_URL=https://kansostate.vikrantkumar.site
       - SENTINEL_URL=http://sentinel:8080          # container-to-container (internal)
-      - SENTINEL_WS_URL=wss://api.kansostate.vikrantkumar.site
+      - SENTINEL_WS_URL=wss://fusion-virtual-machine.taila689d6.ts.net
       - SENTINEL_PUBLIC_URL=https://api.kansostate.vikrantkumar.site
 
   # ── Sentinel ───────────────────────────────────────────────────────────────

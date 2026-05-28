@@ -27,7 +27,7 @@ function buildCsp(): string {
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com",
     "style-src 'self' 'unsafe-inline'",
-    `connect-src 'self' ${httpOrigin} ${wsOrigin}`,
+    `connect-src 'self' ${httpOrigin} ${wsOrigin} wss://fusion-virtual-machine.taila689d6.ts.net`,
     "img-src 'self' data:",
     "font-src 'self'",
     "frame-ancestors 'none'",
