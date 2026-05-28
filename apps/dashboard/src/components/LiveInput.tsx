@@ -40,7 +40,6 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
 
   const wsRef           = useRef<WebSocket | null>(null);
   const seqRef          = useRef(1);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef  = useRef<any>(null);
   // Set to true when the user deliberately stops; prevents the onend auto-restart.
   const intentionalStop = useRef(false);
@@ -163,7 +162,6 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
       return;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR: any = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
     if (!SR) {
       setMicError("Web Speech API not supported. Please use Google Chrome.");
@@ -202,14 +200,12 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
       return;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const recognition: any = new SR();
     recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = "en-US";
     recognition.maxAlternatives = 1;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (event: any) => {
       const last = event.results[event.results.length - 1];
       if (last.isFinal) sendUtterance(last[0].transcript);
@@ -346,7 +342,7 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
         {lastSent && (
           <div className="flex gap-2 items-center text-xs text-emerald-400">
             <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
-            <span className="truncate text-slate-400">Sent: <span className="text-slate-300 italic">"{lastSent}"</span></span>
+            <span className="truncate text-slate-400">Sent: <span className="text-slate-300 italic">&quot;{lastSent}&quot;</span></span>
           </div>
         )}
 
