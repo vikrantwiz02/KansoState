@@ -9,6 +9,8 @@ where = ["src"]
 name = "semantic"
 version = "0.1.0"
 requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Vikrant Kumar"}]
 dependencies = [
     "fastapi>=0.111.0",
     "uvicorn[standard]>=0.30.0",

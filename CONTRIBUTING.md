@@ -147,3 +147,9 @@ git push origin v0.2.0
 ```
 
 See [docs/release-v0.1.0.md](docs/release-v0.1.0.md) for the pre-release gate checklist.
+
+---
+
+## License
+
+By contributing you agree that your contributions will be licensed under the [MIT License](./LICENSE).

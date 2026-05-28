@@ -230,4 +230,4 @@ See [docs/slo.md](docs/slo.md) and [docs/perf-baselines.md](docs/perf-baselines.
 
 ## License
 
-MIT
+[MIT](./LICENSE) © 2026 Vikrant Kumar
