@@ -142,7 +142,7 @@ func (h *SignalHub) Handler(allowedOrigins []string, log *zap.Logger) gin.Handle
 		existing := make([]string, 0, len(room.peers))
 		for id, old := range room.peers {
 			if id == peerID {
-				old.conn.Close()
+				old.conn.Close() //nolint:errcheck
 			} else {
 				existing = append(existing, id)
 			}

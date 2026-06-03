@@ -37,9 +37,12 @@ export function IntentGraph({ events }: Props) {
   );
 
   // All hooks must be called before any early return.
+  // Drop the rfRef.current guard from the outer if — on the first utterance the
+  // component transitions from empty→ReactFlow, so onInit hasn't fired yet when
+  // this effect runs. Always schedule the timeout; optional-chaining handles null.
   useEffect(() => {
-    if (rfRef.current && utterances.length > 0) {
-      setTimeout(() => rfRef.current?.fitView({ padding: 0.25, duration: 300 }), 50);
+    if (utterances.length > 0) {
+      setTimeout(() => rfRef.current?.fitView({ padding: 0.25, duration: 300 }), 120);
     }
   }, [utterances.length]);
 
@@ -88,7 +91,11 @@ export function IntentGraph({ events }: Props) {
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        onInit={(instance) => { rfRef.current = instance; }}
+        onInit={(instance) => {
+          rfRef.current = instance;
+          // Fit immediately on mount (handles joining mid-meeting with existing nodes).
+          setTimeout(() => instance.fitView({ padding: 0.25, duration: 300 }), 50);
+        }}
         proOptions={{ hideAttribution: true }}
       >
         <Background color="rgba(255,255,255,0.04)" gap={24} />

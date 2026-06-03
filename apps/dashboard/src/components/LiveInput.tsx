@@ -3,8 +3,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Mic, MicOff, Send, Wifi, WifiOff, Loader2,
-  AlertCircle, CheckCircle2,
+  AlertCircle, CheckCircle2, Download,
 } from "lucide-react";
+import { useWhisperFallback } from "@/lib/useWhisperFallback";
 
 interface Props {
   meetingId: string;
@@ -31,6 +32,16 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
   const [speechSupported, setSpeechSupported] = useState(false);
   const [sentCount, setSentCount] = useState(0);
   const [lastSent, setLastSent] = useState<string | null>(null);
+  const [partialText, setPartialText] = useState<string | null>(null);
+
+  // Stable ref keeps Whisper's transcript callback from going stale.
+  // Defined before whisper hook so the hook can close over it safely.
+  const sendUtteranceRef = useRef<(t: string) => void>(() => {});
+
+  const whisper = useWhisperFallback(useCallback((transcript: string) => {
+    sendUtteranceRef.current(transcript);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []));
 
   // Audio level
   const [audioLevel, setAudioLevel] = useState(0);
@@ -110,16 +121,19 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
     }
     if (wsState === "connected" && !recognitionRef.current && !autoStartedRef.current && speechSupported) {
       autoStartedRef.current = true;
-      // Await toggleMic so we can detect if the mic was denied / failed to start.
       void (async () => {
         await toggleMic();
-        // If recognition still didn't start (mic denied, no device, etc.) let future
-        // wsState changes try again by resetting the flag.
         if (!recognitionRef.current) autoStartedRef.current = false;
       })();
     }
+
+    // Whisper fallback for non-Chrome browsers
+    if (autoListen && !speechSupported && wsState === "connected") {
+      if (whisper.status === "idle") whisper.load();
+      if (whisper.status === "ready" && !whisper.listening) void whisper.start();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoListen, wsState, speechSupported]);
+  }, [autoListen, wsState, speechSupported, whisper.status, whisper.listening]);
 
   const sendUtterance = useCallback(
     (utteranceText: string) => {
@@ -139,6 +153,9 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
     },
     [meetingId, speakerId]
   );
+
+  // Keep the Whisper callback ref in sync whenever sendUtterance changes identity.
+  useEffect(() => { sendUtteranceRef.current = sendUtterance; }, [sendUtterance]);
 
   // Audio level animation loop
   function startAudioLevelLoop(analyser: AnalyserNode) {
@@ -164,6 +181,7 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
       audioCtxRef.current = null;
       audioStreamRef.current?.getTracks().forEach((t) => t.stop());
       audioStreamRef.current = null;
+      setPartialText(null);
       setAudioLevel(0);
       setListening(false);
       return;
@@ -210,34 +228,50 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
 
     const recognition: any = new SR();
     recognition.continuous = true;
-    recognition.interimResults = false;
+    recognition.interimResults = true;  // capture speech as it happens, not just on final
     recognition.lang = "en-US";
     recognition.maxAlternatives = 1;
 
     recognition.onresult = (event: any) => {
-      const last = event.results[event.results.length - 1];
-      if (last.isFinal) sendUtterance(last[0].transcript);
+      // Iterate from resultIndex — avoids reprocessing results from before a restart.
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript: string = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          sendUtterance(transcript);
+          interim = "";
+        } else {
+          interim += transcript;
+        }
+      }
+      setPartialText(interim || null);
     };
     recognition.onerror = (e: { error: string }) => {
       if (e.error !== "aborted") {
         setMicError(MIC_ERRORS[e.error] ?? `Speech error: ${e.error}`);
       }
       recognitionRef.current = null;
-      // Allow auto-listen to restart the mic once the user clears the error.
       autoStartedRef.current = false;
+      setPartialText(null);
       cancelAnimationFrame(animFrameRef.current);
       setAudioLevel(0);
       setListening(false);
     };
     recognition.onend = () => {
-      // Only auto-restart if this is still the active recognition AND the user
-      // hasn't deliberately stopped it (intentionalStop guard prevents the loop).
+      setPartialText(null);
       if (intentionalStop.current) {
         intentionalStop.current = false;
         return;
       }
       if (recognitionRef.current === recognition) {
-        try { recognition.start(); } catch { setListening(false); }
+        try {
+          recognition.start();
+        } catch {
+          // start() failed (too soon after onend) — clear refs so auto-listen can recover.
+          recognitionRef.current = null;
+          autoStartedRef.current = false;
+          setListening(false);
+        }
       }
     };
 
@@ -280,26 +314,106 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
         </div>
       </div>
 
+      {/* ── WHISPER FALLBACK (non-Chrome browsers) ── */}
+      {autoListen && !speechSupported && (
+        <div className="space-y-2">
+          {whisper.status === "idle" && (
+            <button
+              onClick={whisper.load}
+              disabled={wsState !== "connected"}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-indigo-500/30 bg-indigo-500/10 text-xs text-indigo-300 hover:bg-indigo-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Load transcription model (~40 MB, cached)
+            </button>
+          )}
+
+          {whisper.status === "loading" && (
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
+              <Loader2 className="w-3.5 h-3.5 text-indigo-400 animate-spin flex-shrink-0" />
+              <div className="flex-1">
+                <div className="flex justify-between text-[10px] text-slate-500 mb-1">
+                  <span>Downloading model…</span>
+                  <span className="font-mono">{whisper.loadProgress}%</span>
+                </div>
+                <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-indigo-500 transition-all duration-300"
+                    style={{ width: `${whisper.loadProgress}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {whisper.status === "ready" && (
+            whisper.listening ? (
+              <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0 pulse-live" />
+                <span className="text-xs font-medium text-emerald-400 flex-1">Listening</span>
+                <span className="text-[10px] text-slate-600">~3s chunks</span>
+                <button
+                  onClick={whisper.stop}
+                  className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-red-400 px-2 py-0.5 rounded-lg hover:bg-red-500/10 transition-all"
+                >
+                  <MicOff className="w-3 h-3" /> Pause
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => void whisper.start()}
+                disabled={wsState !== "connected"}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-white/[0.08] bg-white/[0.03] text-xs text-slate-400 hover:border-indigo-500/30 hover:text-indigo-300 disabled:opacity-40 transition-all"
+              >
+                <Mic className="w-3.5 h-3.5" /> Tap to resume listening
+              </button>
+            )
+          )}
+
+          {whisper.status === "error" && (
+            <div className="flex gap-2 items-start p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+              <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-red-300">Transcription model failed to load. Use the text input below.</p>
+            </div>
+          )}
+
+          {whisper.micError && (
+            <div className="flex gap-2 items-start p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+              <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-red-300">{whisper.micError}</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── AUTO MODE: compact passive status bar ── */}
       {autoListen && speechSupported && (
         <div className="space-y-2">
           {listening ? (
-            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0 pulse-live" />
-              <span className="text-xs font-medium text-emerald-400">Listening</span>
-              {/* Live level bar */}
-              <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-indigo-500 transition-all duration-75"
-                  style={{ width: `${audioLevel * 100}%` }}
-                />
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0 pulse-live" />
+                <span className="text-xs font-medium text-emerald-400">Listening</span>
+                <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-indigo-500 transition-all duration-75"
+                    style={{ width: `${audioLevel * 100}%` }}
+                  />
+                </div>
+                <button
+                  onClick={toggleMic}
+                  className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-red-400 px-2 py-0.5 rounded-lg hover:bg-red-500/10 transition-all flex-shrink-0"
+                >
+                  <MicOff className="w-3 h-3" /> Pause
+                </button>
               </div>
-              <button
-                onClick={toggleMic}
-                className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-red-400 px-2 py-0.5 rounded-lg hover:bg-red-500/10 transition-all flex-shrink-0"
-              >
-                <MicOff className="w-3 h-3" /> Pause
-              </button>
+              {/* Live partial transcript — shows what's being heard right now */}
+              {partialText && (
+                <div className="px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.06]">
+                  <span className="text-[11px] text-slate-500 italic">{partialText}</span>
+                  <span className="inline-block w-0.5 h-3 bg-slate-500 ml-0.5 animate-pulse align-middle" />
+                </div>
+              )}
             </div>
           ) : (
             <button
@@ -385,7 +499,7 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
         </div>
       )}
 
-        {!speechSupported && (
+        {!autoListen && !speechSupported && (
           <p className="text-[11px] text-slate-600">
             Microphone requires Chrome or Edge. Use the text input on other browsers.
           </p>

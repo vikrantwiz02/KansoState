@@ -28,9 +28,9 @@ export function SpeakerTimeline({ events }: Props) {
   const [atBottom, setAtBottom] = useState(true);
   const [newCount,  setNewCount]  = useState(0);
   const prevLen     = useRef(0);
-  // Tracks the count at last render so only truly new items get the enter animation.
-  // Safe to mutate during render — refs don't trigger re-renders.
-  const animatedUpTo = useRef(0);
+  // -1 = not yet initialised. On first render we set it to the current length so
+  // historical messages don't animate; only messages arriving after mount do.
+  const animatedUpTo = useRef(-1);
 
   const utterances = events
     .filter((e) => e.type === "utterance")
@@ -71,7 +71,9 @@ export function SpeakerTimeline({ events }: Props) {
     setNewCount(0);
   }
 
-  // Capture threshold before updating it so newly-added items animate this render.
+  // On first render: set threshold to current length so historical items don't animate.
+  // On subsequent renders: threshold stays at last-seen length; only new items animate.
+  if (animatedUpTo.current === -1) animatedUpTo.current = utterances.length;
   const newFromIndex = animatedUpTo.current;
   animatedUpTo.current = utterances.length;
 
