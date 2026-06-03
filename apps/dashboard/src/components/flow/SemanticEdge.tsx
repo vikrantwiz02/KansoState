@@ -1,7 +1,7 @@
 "use client";
 
 import { memo } from "react";
-import { BaseEdge, EdgeLabelRenderer, getStraightPath } from "reactflow";
+import { BaseEdge, getStraightPath } from "reactflow";
 import type { SemanticEdgeData } from "@/lib/types";
 
 interface Props {

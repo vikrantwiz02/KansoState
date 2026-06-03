@@ -2,22 +2,26 @@ import type { BridgeNote, SSEEnvelope } from "@/lib/types";
 import { Zap, TrendingDown, TrendingUp, User, GitMerge, Loader } from "lucide-react";
 
 interface Props {
-  events: SSEEnvelope[];
+  events: (SSEEnvelope & { clientTs?: number })[];
 }
 
 const tagMeta: Record<string, { icon: typeof Zap; color: string; bg: string; border: string }> = {
-  diverging:      { icon: TrendingDown, color: "text-red-400",    bg: "bg-red-500/10",    border: "border-red-500/20" },
-  "speaker-drift":{ icon: User,         color: "text-amber-400",  bg: "bg-amber-500/10",  border: "border-amber-500/20" },
-  "high-alignment":{ icon: TrendingUp,  color: "text-emerald-400",bg: "bg-emerald-500/10",border: "border-emerald-500/20" },
-  converging:     { icon: GitMerge,     color: "text-indigo-400", bg: "bg-indigo-500/10", border: "border-indigo-500/20" },
-  "early-stage":  { icon: Loader,       color: "text-slate-400",  bg: "bg-slate-500/10",  border: "border-slate-500/20" },
+  diverging:       { icon: TrendingDown, color: "text-red-400",    bg: "bg-red-500/10",     border: "border-red-500/20" },
+  "speaker-drift": { icon: User,         color: "text-amber-400",  bg: "bg-amber-500/10",   border: "border-amber-500/20" },
+  "high-alignment":{ icon: TrendingUp,   color: "text-emerald-400",bg: "bg-emerald-500/10", border: "border-emerald-500/20" },
+  converging:      { icon: GitMerge,     color: "text-indigo-400", bg: "bg-indigo-500/10",  border: "border-indigo-500/20" },
+  "early-stage":   { icon: Loader,       color: "text-slate-400",  bg: "bg-slate-500/10",   border: "border-slate-500/20" },
 };
+
+function formatTime(ts: number) {
+  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
 
 export function BridgeNotes({ events }: Props) {
   const notes = events
     .filter((e) => e.type === "bridge")
-    .map((e) => e.payload as BridgeNote)
-    .slice(-6) // show most recent 6
+    .map((e) => ({ ...(e.payload as BridgeNote), clientTs: e.clientTs }))
+    .slice(-6)
     .reverse();
 
   if (notes.length === 0) {
@@ -32,7 +36,7 @@ export function BridgeNotes({ events }: Props) {
   }
 
   return (
-    <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+    <div className="space-y-3 max-h-[360px] overflow-y-auto pr-1">
       {notes.map((n, i) => {
         const firstTag = n.tags[0] ?? "early-stage";
         const meta = tagMeta[firstTag] ?? tagMeta["early-stage"];
@@ -40,11 +44,11 @@ export function BridgeNotes({ events }: Props) {
         return (
           <div
             key={i}
-            className={`rounded-xl p-3.5 border ${meta.bg} ${meta.border} transition-all`}
+            className={`rounded-xl p-3.5 border ${meta.bg} ${meta.border} animate-slideInUp`}
           >
             <div className="flex items-center gap-2 mb-2">
               <Icon className={`w-3.5 h-3.5 ${meta.color} flex-shrink-0`} />
-              <div className="flex gap-1.5 flex-wrap">
+              <div className="flex gap-1.5 flex-wrap flex-1">
                 {n.tags.map((tag) => (
                   <span
                     key={tag}
@@ -54,6 +58,9 @@ export function BridgeNotes({ events }: Props) {
                   </span>
                 ))}
               </div>
+              {n.clientTs && (
+                <span className="text-[10px] text-slate-600 font-mono flex-shrink-0">{formatTime(n.clientTs)}</span>
+              )}
             </div>
             {n.note && (
               <p className="text-xs text-slate-300 leading-relaxed">{n.note}</p>

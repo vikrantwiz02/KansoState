@@ -222,7 +222,9 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
       if (e.error !== "aborted") {
         setMicError(MIC_ERRORS[e.error] ?? `Speech error: ${e.error}`);
       }
-      recognitionRef.current = null; // clear stale ref so restart doesn't loop
+      recognitionRef.current = null;
+      // Allow auto-listen to restart the mic once the user clears the error.
+      autoStartedRef.current = false;
       cancelAnimationFrame(animFrameRef.current);
       setAudioLevel(0);
       setListening(false);
@@ -259,100 +261,129 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
 
   return (
     <div className="glass rounded-2xl p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-xs font-medium text-slate-500 uppercase tracking-widest mb-0.5">Your input</div>
-            <div className="text-xs text-slate-400">
-              Speaking as{" "}
-              <span className="text-indigo-400 font-semibold">{speakerId}</span>
-              <span className="text-slate-600 ml-2 font-mono">· {sentCount} sent</span>
-            </div>
-          </div>
-          <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border ${wsColors[wsState]}`}>
-            {wsState === "connecting" ? <Loader2 className="w-3 h-3 animate-spin" />
-              : wsState === "connected" ? <Wifi className="w-3 h-3" />
-              : <WifiOff className="w-3 h-3" />}
-            {wsState}
+
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-xs font-medium text-slate-500 uppercase tracking-widest mb-0.5">Your input</div>
+          <div className="text-xs text-slate-400">
+            Speaking as{" "}
+            <span className="text-indigo-400 font-semibold">{speakerId}</span>
+            <span className="text-slate-600 ml-2 font-mono">· {sentCount} sent</span>
           </div>
         </div>
+        <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border ${wsColors[wsState]}`}>
+          {wsState === "connecting" ? <Loader2 className="w-3 h-3 animate-spin" />
+            : wsState === "connected" ? <Wifi className="w-3 h-3" />
+            : <WifiOff className="w-3 h-3" />}
+          {wsState}
+        </div>
+      </div>
 
-        {/* Mic button */}
-        {speechSupported && (
-          <div className="space-y-2">
+      {/* ── AUTO MODE: compact passive status bar ── */}
+      {autoListen && speechSupported && (
+        <div className="space-y-2">
+          {listening ? (
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0 pulse-live" />
+              <span className="text-xs font-medium text-emerald-400">Listening</span>
+              {/* Live level bar */}
+              <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-indigo-500 transition-all duration-75"
+                  style={{ width: `${audioLevel * 100}%` }}
+                />
+              </div>
+              <button
+                onClick={toggleMic}
+                className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-red-400 px-2 py-0.5 rounded-lg hover:bg-red-500/10 transition-all flex-shrink-0"
+              >
+                <MicOff className="w-3 h-3" /> Pause
+              </button>
+            </div>
+          ) : (
             <button
               onClick={toggleMic}
               disabled={wsState !== "connected"}
-              className={`w-full flex items-center justify-center gap-2.5 py-3.5 rounded-xl border text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
-                listening
-                  ? "bg-red-500/15 border-red-500/40 text-red-300 shadow-[0_0_20px_rgba(239,68,68,0.2)]"
-                  : "bg-white/[0.04] border-white/[0.08] text-slate-300 hover:border-indigo-500/40 hover:bg-indigo-500/[0.06]"
-              }`}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-white/[0.08] bg-white/[0.03] text-xs text-slate-400 hover:border-indigo-500/30 hover:text-indigo-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
             >
-              {listening ? (
-                <><MicOff className="w-4 h-4" /> Stop listening</>
-              ) : (
-                <><Mic className="w-4 h-4" /> Start listening (mic)</>
-              )}
-              {listening && <span className="w-1.5 h-1.5 rounded-full bg-red-400 pulse-live" />}
+              <Mic className="w-3.5 h-3.5" />
+              {wsState === "connecting" ? "Waiting for connection…" : "Tap to resume listening"}
             </button>
-
-            {/* Audio level bar */}
-            {listening && (
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-slate-600">Level</span>
-                <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-75"
-                    style={{ width: `${audioLevel * 100}%` }}
-                  />
-                </div>
-                <span className="text-[10px] text-slate-600 font-mono w-8 text-right">
-                  {Math.round(audioLevel * 100)}%
-                </span>
-              </div>
-            )}
-
-            {/* Mic error */}
-            {micError && (
-              <div className="flex gap-2 items-start p-3 rounded-xl bg-red-500/10 border border-red-500/20">
-                <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-red-300 leading-relaxed">{micError}</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Manual text input */}
-        <div className="flex gap-2">
-          <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSubmit();
-              }
-            }}
-            placeholder={speechSupported ? "Or type an utterance…" : "Type an utterance…"}
-            disabled={wsState !== "connected"}
-            className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/[0.03] disabled:opacity-40 transition-all"
-          />
-          <button
-            onClick={handleSubmit}
-            disabled={!text.trim() || wsState !== "connected"}
-            className="px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
-          >
-            <Send className="w-4 h-4" />
-          </button>
+          )}
+          {micError && (
+            <div className="flex gap-2 items-start p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+              <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-red-300 leading-relaxed">{micError}</p>
+            </div>
+          )}
         </div>
+      )}
 
-        {/* Last sent confirmation */}
-        {lastSent && (
-          <div className="flex gap-2 items-center text-xs text-emerald-400">
-            <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
-            <span className="truncate text-slate-400">Sent: <span className="text-slate-300 italic">&quot;{lastSent}&quot;</span></span>
-          </div>
-        )}
+      {/* ── MANUAL MODE: full mic toggle button ── */}
+      {!autoListen && speechSupported && (
+        <div className="space-y-2">
+          <button
+            onClick={toggleMic}
+            disabled={wsState !== "connected"}
+            className={`w-full flex items-center justify-center gap-2.5 py-3.5 rounded-xl border text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+              listening
+                ? "bg-red-500/15 border-red-500/40 text-red-300 shadow-[0_0_20px_rgba(239,68,68,0.2)]"
+                : "bg-white/[0.04] border-white/[0.08] text-slate-300 hover:border-indigo-500/40 hover:bg-indigo-500/[0.06]"
+            }`}
+          >
+            {listening ? <><MicOff className="w-4 h-4" /> Stop listening</> : <><Mic className="w-4 h-4" /> Start listening</>}
+            {listening && <span className="w-1.5 h-1.5 rounded-full bg-red-400 pulse-live" />}
+          </button>
+          {listening && (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-slate-600">Level</span>
+              <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-75"
+                  style={{ width: `${audioLevel * 100}%` }}
+                />
+              </div>
+              <span className="text-[10px] text-slate-600 font-mono w-8 text-right">{Math.round(audioLevel * 100)}%</span>
+            </div>
+          )}
+          {micError && (
+            <div className="flex gap-2 items-start p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+              <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-red-300 leading-relaxed">{micError}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Manual text input — always available as fallback */}
+      <div className="flex gap-2">
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
+          }}
+          placeholder={speechSupported ? "Or type manually…" : "Type an utterance…"}
+          disabled={wsState !== "connected"}
+          className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/[0.03] disabled:opacity-40 transition-all"
+        />
+        <button
+          onClick={handleSubmit}
+          disabled={!text.trim() || wsState !== "connected"}
+          className="px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
+        >
+          <Send className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Last sent confirmation */}
+      {lastSent && (
+        <div className="flex gap-2 items-center text-xs">
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+          <span className="truncate text-slate-500">Sent: <span className="text-slate-300 italic">&quot;{lastSent}&quot;</span></span>
+        </div>
+      )}
 
         {!speechSupported && (
           <p className="text-[11px] text-slate-600">

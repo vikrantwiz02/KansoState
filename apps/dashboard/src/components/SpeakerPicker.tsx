@@ -1,16 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import { Users, ArrowRight } from "lucide-react";
-
-const SUGGESTED = ["Alice", "Bob", "Carol", "Dave", "Eve", "Frank"];
 
 interface Props {
   onConfirm: (name: string) => void;
 }
 
 export function SpeakerPicker({ onConfirm }: Props) {
+  const { data: session } = useSession();
   const [name, setName] = useState("");
+
+  // Pre-fill with first name from Google account once session loads.
+  // Only fills if the user hasn't typed anything yet.
+  useEffect(() => {
+    if (session?.user?.name && name === "") {
+      setName(session.user.name.split(" ")[0]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
 
   function handleConfirm() {
     const trimmed = name.trim();
@@ -36,25 +45,8 @@ export function SpeakerPicker({ onConfirm }: Props) {
           onKeyDown={(e) => e.key === "Enter" && handleConfirm()}
           placeholder="Enter your name…"
           maxLength={32}
-          className="w-full bg-white/[0.04] border border-white/[0.10] rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500/60 focus:bg-indigo-500/[0.04] transition-all mb-4"
+          className="w-full bg-white/[0.04] border border-white/[0.10] rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500/60 focus:bg-indigo-500/[0.04] transition-all mb-6"
         />
-
-        {/* Quick picks */}
-        <div className="flex flex-wrap gap-2 mb-6">
-          {SUGGESTED.map((s) => (
-            <button
-              key={s}
-              onClick={() => setName(s)}
-              className={`px-3 py-1 rounded-lg text-xs font-medium border transition-all ${
-                name.toLowerCase() === s.toLowerCase()
-                  ? "bg-indigo-500/20 border-indigo-500/40 text-indigo-300"
-                  : "bg-white/[0.03] border-white/[0.08] text-slate-400 hover:border-white/[0.14] hover:text-slate-200"
-              }`}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
 
         <button
           onClick={handleConfirm}

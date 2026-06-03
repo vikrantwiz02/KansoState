@@ -59,8 +59,8 @@ export default async function DashboardPage() {
             <h1 className="text-2xl font-bold tracking-tight">Meetings</h1>
             <p className="text-sm text-slate-500 mt-1">
               {meetings.length === 0
-                ? "No active meetings"
-                : `${meetings.length} meeting${meetings.length !== 1 ? "s" : ""} in the ring buffer`}
+                ? "Start a new meeting to get going"
+                : `${meetings.length} active meeting${meetings.length !== 1 ? "s" : ""}`}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -79,14 +79,11 @@ export default async function DashboardPage() {
             <div className="w-14 h-14 rounded-2xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center mx-auto mb-4">
               <Activity className="w-6 h-6 text-slate-600" />
             </div>
-            <h3 className="font-semibold text-slate-300 mb-2">No active meetings</h3>
+            <h3 className="font-semibold text-slate-300 mb-2">No meetings yet</h3>
             <p className="text-sm text-slate-500 max-w-xs mx-auto mb-6 leading-relaxed">
-              Connect a client to the WebSocket endpoint to start ingesting meeting data.
+              Create a meeting, share the link, and start talking — KansoState tracks alignment in real time.
             </p>
-            <div className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.06] text-xs font-mono text-slate-400">
-              ws://localhost:8080/ws?meetingId=
-              <span className="text-indigo-400">&lt;id&gt;</span>
-            </div>
+            <StartMeetingButton />
           </div>
         ) : (
           <div className="space-y-3">

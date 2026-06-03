@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useMemo } from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -55,7 +55,7 @@ export function IntentGraph({ events }: Props) {
     );
   }
 
-  const nodes = utterances.map((u, i) => ({
+  const nodes = useMemo(() => utterances.map((u, i) => ({
     id: `u-${u.seq}`,
     type: "utterance" as const,
     position: { x: (i % 4) * 240, y: Math.floor(i / 4) * 110 },
@@ -66,9 +66,10 @@ export function IntentGraph({ events }: Props) {
       seq: u.seq,
       consensus: consensusMap[u.speaker_id] ?? 0,
     } satisfies UtteranceNodeData,
-  }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  })), [utterances.length]);
 
-  const edges = utterances.slice(1).map((u, i) => ({
+  const edges = useMemo(() => utterances.slice(1).map((u, i) => ({
     id: `e-${i}`,
     source: `u-${utterances[i].seq}`,
     target: `u-${u.seq}`,
@@ -78,7 +79,8 @@ export function IntentGraph({ events }: Props) {
       target: `u-${u.seq}`,
       similarity: 0.5,
     } satisfies SemanticEdgeData,
-  }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  })), [utterances.length]);
 
   return (
     <div className="h-[480px] rounded-xl overflow-hidden border border-white/[0.06]" style={{ background: "rgba(0,0,0,0.3)" }}>

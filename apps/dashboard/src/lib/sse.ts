@@ -14,32 +14,26 @@ export function connectSSE(
   let es: EventSource | null = null;
   let retryMs = 1000;
   let stopped = false;
+  let currentSeq = lastSeq;
 
   function connect() {
-    const url = `/api/stream/${encodeURIComponent(meetingId)}`;
+    // Include last known seq so the server can resume from the right point.
+    const url = `/api/stream/${encodeURIComponent(meetingId)}?lastSeq=${currentSeq}`;
     es = new EventSource(url);
     es.onopen = () => { if (!stopped) onConnect?.(); };
 
-    es.addEventListener("utterance", (e: MessageEvent) => {
+    function handle(e: MessageEvent) {
       try {
         const env: SSEEnvelope = JSON.parse(e.data);
+        currentSeq = Math.max(currentSeq, env.seq);
         onEvent(env);
         retryMs = 1000;
-      } catch {}
-    });
+      } catch { /* ignore malformed */ }
+    }
 
-    es.addEventListener("consensus", (e: MessageEvent) => {
-      try {
-        onEvent(JSON.parse(e.data));
-        retryMs = 1000;
-      } catch {}
-    });
-
-    es.addEventListener("bridge", (e: MessageEvent) => {
-      try {
-        onEvent(JSON.parse(e.data));
-      } catch {}
-    });
+    es.addEventListener("utterance", handle);
+    es.addEventListener("consensus", handle);
+    es.addEventListener("bridge", handle);
 
     es.addEventListener("shutdown", () => {
       es?.close();

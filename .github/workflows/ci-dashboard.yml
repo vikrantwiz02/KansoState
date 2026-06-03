@@ -65,8 +65,26 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: apps/dashboard/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test
+      # Build the app so `pnpm start` works inside playwright.config.ts webServer.
+      - name: build for e2e
+        run: pnpm build
         env:
-          PLAYWRIGHT_TEST_BASE_URL: http://localhost:3000
+          NEXT_TELEMETRY_DISABLED: "1"
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET || 'ci-test-secret-must-be-at-least-32-chars!!' }}
+          NEXTAUTH_URL: "http://localhost:3000"
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID || 'placeholder-not-used-in-e2e' }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET || 'placeholder-not-used-in-e2e' }}
+          SENTINEL_URL: "http://localhost:8080"
+          SENTINEL_WS_URL: "ws://localhost:8080"
+          SENTINEL_PUBLIC_URL: "http://localhost:8080"
+      - name: run e2e tests
+        run: pnpm test
+        env:
+          PLAYWRIGHT_TEST_BASE_URL: "http://localhost:3000"
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET || 'ci-test-secret-must-be-at-least-32-chars!!' }}
+          NEXTAUTH_URL: "http://localhost:3000"
+          SENTINEL_URL: ${{ secrets.SENTINEL_URL || '' }}
