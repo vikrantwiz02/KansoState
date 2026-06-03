@@ -36,24 +36,12 @@ export function IntentGraph({ events }: Props) {
       })
   );
 
-  // Re-fit whenever the number of nodes changes so new utterances stay visible.
-  // Must be before any early return to satisfy rules-of-hooks.
+  // All hooks must be called before any early return.
   useEffect(() => {
     if (rfRef.current && utterances.length > 0) {
       setTimeout(() => rfRef.current?.fitView({ padding: 0.25, duration: 300 }), 50);
     }
   }, [utterances.length]);
-
-  if (utterances.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[480px] text-center">
-        <div className="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-3">
-          <GitBranch className="w-4 h-4 text-slate-600" />
-        </div>
-        <p className="text-xs text-slate-600">Graph will form as utterances arrive.</p>
-      </div>
-    );
-  }
 
   const nodes = useMemo(() => utterances.map((u, i) => ({
     id: `u-${u.seq}`,
@@ -81,6 +69,17 @@ export function IntentGraph({ events }: Props) {
     } satisfies SemanticEdgeData,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   })), [utterances.length]);
+
+  if (utterances.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[480px] text-center">
+        <div className="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-3">
+          <GitBranch className="w-4 h-4 text-slate-600" />
+        </div>
+        <p className="text-xs text-slate-600">Graph will form as utterances arrive.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="h-[480px] rounded-xl overflow-hidden border border-white/[0.06]" style={{ background: "rgba(0,0,0,0.3)" }}>
