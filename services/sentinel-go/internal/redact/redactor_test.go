@@ -121,9 +121,15 @@ func FuzzRedact(f *testing.F) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// invariant: redacted text must never be longer than input + placeholder overhead
-		if len(out.RedactedText) > len(text)+len(out.Redactions)*32 {
-			t.Errorf("redacted text unexpectedly long")
+		// Invariant: redacted text is bounded by the NORMALIZED input plus
+		// placeholder overhead. Bounding against the raw input is wrong —
+		// normalization legitimately changes byte length (NFKC expands
+		// compatibility chars; invalid UTF-8 becomes the 3-byte U+FFFD), and the
+		// redactor only ever replaces normalized spans with bounded placeholders.
+		normalized := redact.Normalize(text)
+		if len(out.RedactedText) > len(normalized)+len(out.Redactions)*32 {
+			t.Errorf("redacted text unexpectedly long: %d > %d (normalized) + %d redactions",
+				len(out.RedactedText), len(normalized), len(out.Redactions))
 		}
 	})
 }

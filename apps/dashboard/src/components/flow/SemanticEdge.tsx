@@ -14,12 +14,17 @@ interface Props {
 }
 
 function SemanticEdgeComponent({ id, sourceX, sourceY, targetX, targetY, data }: Props) {
-  const [edgePath, labelX, labelY] = getStraightPath({ sourceX, sourceY, targetX, targetY });
-  const opacity = data ? 0.3 + data.similarity * 0.7 : 0.5;
+  const [edgePath] = getStraightPath({ sourceX, sourceY, targetX, targetY });
+  const similarity = data?.similarity ?? 0.5;
+  const opacity = 0.3 + similarity * 0.7;
+  // Thickness reinforces similarity; bridge edges (cross-cluster links) glow cyan
+  // so the pivot connections stand out from same-topic links.
+  const strokeWidth = 1 + similarity * 2.5;
+  const stroke = data?.bridge ? "#22d3ee" : "#3b82f6";
 
   return (
     <>
-      <BaseEdge id={id} path={edgePath} style={{ stroke: "#3b82f6", opacity }} />
+      <BaseEdge id={id} path={edgePath} style={{ stroke, opacity, strokeWidth }} />
     </>
   );
 }

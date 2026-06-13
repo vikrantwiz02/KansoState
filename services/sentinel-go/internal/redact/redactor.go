@@ -59,11 +59,20 @@ func (r *Redactor) SetAllowlist(meetingID string, tokens []string) {
 	r.allowlists.Store(meetingID, m)
 }
 
+// Normalize applies the same NFKC normalization and zero-width stripping the
+// redactor performs before matching. It is exported so tests can compute the
+// exact post-normalization baseline — normalization legitimately changes byte
+// length (NFKC expands compatibility characters; invalid UTF-8 bytes become the
+// 3-byte U+FFFD replacement char when ranged), so the redacted output is bounded
+// by the normalized input, not the raw input.
+func Normalize(s string) string {
+	return stripZeroWidth(norm.NFKC.String(s))
+}
+
 // Redact returns a Redacted utterance. The input utterance is not modified.
 func (r *Redactor) Redact(u apiv1.Utterance) (apiv1.Redacted, error) {
 	// 1. Normalize
-	normalized := norm.NFKC.String(u.Text)
-	normalized = stripZeroWidth(normalized)
+	normalized := Normalize(u.Text)
 
 	// 2. Collect all candidate spans
 	spans := r.regexer.Find(normalized)

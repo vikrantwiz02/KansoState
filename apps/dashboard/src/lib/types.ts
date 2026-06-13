@@ -43,11 +43,20 @@ export interface UtteranceNodeData {
   speakerId: string;
   text: string;
   seq: number;
+  // Consensus score at the moment this utterance was spoken (matched by seq).
   consensus: number;
+  // Speaker's drift from their own baseline at that moment.
+  drift: number;
+  // Bridges two otherwise-separate topic clusters.
+  isPivot: boolean;
+  // Drift spiked here — the speaker swung away from the conversation.
+  isFracture: boolean;
 }
 
 export interface SemanticEdgeData {
   source: string;
   target: string;
   similarity: number;
+  // True when the two endpoints live in different topic clusters.
+  bridge?: boolean;
 }

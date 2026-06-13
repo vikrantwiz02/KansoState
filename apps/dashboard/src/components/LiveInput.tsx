@@ -63,26 +63,54 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
     );
   }, []);
 
-  // WebSocket connection (API key stays server-side)
+  // WebSocket connection with automatic exponential-backoff reconnect.
   useEffect(() => {
-    let ws: WebSocket | null = null;
     let cancelled = false;
+    let retryMs = 1_000;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-    fetch(`/api/ws-ticket?meetingId=${encodeURIComponent(meetingId)}`)
-      .then((r) => r.json())
-      .then(({ url }) => {
-        if (cancelled || !url) return;
-        ws = new WebSocket(url);
-        wsRef.current = ws;
-        ws.onopen = () => { if (!cancelled) setWsState("connected"); };
-        ws.onclose = () => { if (!cancelled) setWsState("disconnected"); };
-        ws.onerror = () => { if (!cancelled) setWsState("error"); };
-      })
-      .catch(() => { if (!cancelled) setWsState("error"); });
+    function connect() {
+      if (cancelled) return;
+      setWsState("connecting");
 
+      fetch(`/api/ws-ticket?meetingId=${encodeURIComponent(meetingId)}`)
+        .then((r) => r.json())
+        .then(({ url }: { url?: string }) => {
+          if (cancelled || !url) return;
+          const ws = new WebSocket(url);
+          wsRef.current = ws;
+
+          ws.onopen = () => {
+            if (!cancelled) { setWsState("connected"); retryMs = 1_000; }
+          };
+          ws.onclose = () => {
+            wsRef.current = null;
+            if (!cancelled) {
+              setWsState("disconnected");
+              retryTimer = setTimeout(connect, retryMs);
+              retryMs = Math.min(retryMs * 2, 30_000);
+            }
+          };
+          ws.onerror = () => {
+            // onerror is always followed by onclose — reconnect happens there.
+            if (!cancelled) setWsState("error");
+          };
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setWsState("error");
+            retryTimer = setTimeout(connect, retryMs);
+            retryMs = Math.min(retryMs * 2, 30_000);
+          }
+        });
+    }
+
+    connect();
     return () => {
       cancelled = true;
-      ws?.close();
+      if (retryTimer) clearTimeout(retryTimer);
+      wsRef.current?.close();
+      wsRef.current = null;
     };
   }, [meetingId]);
 
@@ -391,6 +419,15 @@ export function LiveInput({ meetingId, speakerId, autoListen }: Props) {
         <div className="space-y-2">
           {listening ? (
             <div className="space-y-1.5">
+              {/* Warn when mic is active but WS is down — utterances are being dropped */}
+              {wsState !== "connected" && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                  <span className="text-[11px] text-amber-300">
+                    {wsState === "connecting" ? "Reconnecting — utterances held…" : "Disconnected — utterances not reaching server"}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0 pulse-live" />
                 <span className="text-xs font-medium text-emerald-400">Listening</span>
